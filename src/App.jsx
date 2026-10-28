@@ -11,9 +11,9 @@ function getDateParts(dateString) {
   const [year, month, day] = dateString.split("-").map(Number);
 
   const months = [
-    "january", "february", "march", "april",
-    "may", "june", "july", "august",
-    "september", "october", "november", "december"
+    "January", "February", "March", "April",
+    "May", "June", "July", "August",
+    "September", "October", "November", "December"
   ];
 
   const shortMonths = [
@@ -25,7 +25,7 @@ function getDateParts(dateString) {
     year,
     monthNumber: month,
     dateHeading: `${String(day).padStart(2, "0")}-${shortMonths[month - 1]}-${year}`,
-    fileName: `line-${year}-${months[month - 1]}-logs.txt`
+    fileName: `line-${shortMonths[month - 1]}-${year}-logs.txt`
   };
 }
 
@@ -101,7 +101,11 @@ export default function App() {
 
   const { urls, invalid } = useMemo(() => normalizeUrls(ticketInput), [ticketInput]);
   const dateParts = useMemo(() => getDateParts(date), [date]);
-  const targetPath = filePath.trim() ? `${filePath.trim().replace(/^\/|\/$/g, "")}/${dateParts.fileName}` : dateParts.fileName;
+  const targetPath = [
+    "logs",
+    String(dateParts.year),
+    dateParts.fileName
+  ].join("/");
   const repoMatch = ownerRepo.trim().match(/^(?:https:\/\/github\.com\/)?([^/\s]+)\/([^/\s#?]+)\/?$/);
   const owner = repoMatch?.[1];
   const repo = repoMatch?.[2]?.replace(/\.git$/, "");
