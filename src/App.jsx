@@ -106,6 +106,7 @@ export default function App() {
   const owner = repoMatch?.[1];
   const repo = repoMatch?.[2]?.replace(/\.git$/, "");
 
+  
   async function githubRequest(path, options = {}) {
     const response = await fetch(`${API}${path}`, {
       ...options,
@@ -116,11 +117,19 @@ export default function App() {
         ...(options.headers || {})
       }
     });
-    const data = response.status === 204 ? null : await response.json().catch(() => null);
+  
+    const data = response.status === 204
+      ? null
+      : await response.json().catch(() => null);
+  
     if (!response.ok) {
-      const error = data?.message || `GitHub API error (${response.status})`;
-      throw new Error(response.status === 404 ? `${error}. Check the repository, branch, file path, and token permissions.` : error);
+      const error = new Error(
+        data?.message || `GitHub API error (${response.status})`
+      );
+      error.status = response.status;
+      throw error;
     }
+  
     return data;
   }
 
@@ -154,71 +163,165 @@ export default function App() {
     }
   }
 
+  
   async function saveToGithub() {
     setMessage(null);
+  
     if (!owner || !repo) {
-      setMessage({ type: "error", text: "Enter a valid GitHub repository URL, such as https://github.com/owner/repository." });
+      setMessage({
+        type: "error",
+        text: "Enter a valid GitHub repository URL."
+      });
       return;
     }
+  
     if (!token.trim()) {
-      setMessage({ type: "error", text: "Enter a GitHub token with repository Contents read/write permission." });
+      setMessage({
+        type: "error",
+        text: "Enter a GitHub token with repository Contents read/write permission."
+      });
       return;
     }
+  
     if (!urls.length) {
-      setMessage({ type: "error", text: "Enter at least one Jira ticket URL." });
+      setMessage({
+        type: "error",
+        text: "Enter at least one Jira ticket URL."
+      });
       return;
     }
+  
     if (invalid.length) {
-      setMessage({ type: "error", text: `These are not valid Jira browse URLs: ${invalid.join(", ")}` });
+      setMessage({
+        type: "error",
+        text: `These are not valid Jira browse URLs: ${invalid.join(", ")}`
+      });
       return;
     }
+  
     setBusy(true);
+  
     try {
-      const encodedPath = targetPath.split("/").map(encodeURIComponent).join("/");
       const ref = branch.trim() || "main";
+  
+      // Build the complete path, including the year folder.
+      const encodedPath = targetPath
+        .split("/")
+        .map(encodeURIComponent)
+        .join("/");
+  
       let existing = "";
       let sha;
+  
+      // Read the existing file, if present.
       try {
-        const data = await githubRequest(`/repos/${owner}/${repo}/contents/${encodedPath}?ref=${encodeURIComponent(ref)}`);
-        if (Array.isArray(data)) throw new Error("The target path is a directory, not a text file.");
+        const data = await githubRequest(
+          `/repos/${owner}/${repo}/contents/${encodedPath}?ref=${encodeURIComponent(ref)}`
+        );
+  
+        if (Array.isArray(data)) {
+          throw new Error(
+            "The target path is a directory, not a text file."
+          );
+        }
+  
         existing = decodeContent(data.content || "");
         sha = data.sha;
       } catch (error) {
-        if (!String(error.message).includes("Not Found") && !String(error.message).includes("404")) throw error;
+        if (error.status !== 404) {
+          throw error;
+        }
+  
+        // File does not exist; create it using the PUT request below.
+        existing = "";
+        sha = undefined;
       }
-      const result = updateLog(existing, dateParts.dateHeading, urls);
-      const content = typeof result === "string" ? result : result.content;
-      if (content === existing && existing) {
+  
+      // Add today's section or append only new URLs to an existing section.
+      const result = updateLog(
+        existing,
+        dateParts.dateHeading,
+        urls
+      );
+  
+      const content = typeof result === "string"
+        ? result
+        : result.content;
+  
+      // Avoid creating unnecessary commits when nothing changed.
+      if (existing && content === existing) {
         setPreviewContent(content);
-        setPreviewMeta({ exists: true, added: [], duplicates: urls, count: urls.length });
-        setMessage({ type: "success", text: "No changes needed: all submitted URLs are already logged for this date." });
+        setPreviewMeta({
+          exists: true,
+          added: [],
+          duplicates: urls,
+          count: urls.length
+        });
+  
+        setPreviewOpen(true);
+        setMessage({
+          type: "success",
+          text: "No changes needed: all submitted URLs are already logged for this date."
+        });
+  
         return;
       }
+  
       const payload = {
-        message: `Update ${dateParts.fileName} with Jira ticket log for ${dateParts.dateHeading}`,
+        message: `${sha ? "Update" : "Create"} ${dateParts.fileName} - ${dateParts.dateHeading}`,
         content: encodeContent(content),
         branch: ref
       };
-      if (sha) payload.sha = sha;
-      const saved = await githubRequest(`/repos/${owner}/${repo}/contents/${encodedPath}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload)
-      });
+  
+      // GitHub requires the existing file SHA for updates.
+      // Do not include SHA when creating a new file.
+      if (sha) {
+        payload.sha = sha;
+      }
+  
+      // GitHub creates missing directories and the file automatically.
+      const saved = await githubRequest(
+        `/repos/${owner}/${repo}/contents/${encodedPath}`,
+        {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify(payload)
+        }
+      );
+  
       setPreviewContent(content);
-      setPreviewMeta({ exists: Boolean(sha), added: result.added ?? urls, duplicates: result.duplicates ?? [], count: urls.length });
+  
+      setPreviewMeta({
+        exists: Boolean(sha),
+        added: result.added ?? urls,
+        duplicates: result.duplicates ?? [],
+        count: urls.length
+      });
+  
+      setPreviewOpen(true);
+  
+      const fileUrl =
+        saved.content?.html_url ||
+        `https://github.com/${owner}/${repo}/blob/${encodeURIComponent(ref)}/${encodedPath}`;
+  
       setMessage({
         type: "success",
         text: `${sha ? "Updated" : "Created"} ${targetPath} successfully.`,
-        url: saved.content?.html_url || `https://github.com/${owner}/${repo}/blob/${encodeURIComponent(ref)}/${targetPath.split("/").map(encodeURIComponent).join("/")}`
+        url: fileUrl
       });
-      setPreviewOpen(true);
+  
     } catch (error) {
-      setMessage({ type: "error", text: error.message });
+      setMessage({
+        type: "error",
+        text: error.message || "Failed to save the log to GitHub."
+      });
     } finally {
       setBusy(false);
     }
   }
+
 
   return (
     <main className="app-shell">
