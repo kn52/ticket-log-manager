@@ -101,15 +101,7 @@ export default function App() {
 
   const { urls, invalid } = useMemo(() => normalizeUrls(ticketInput), [ticketInput]);
   const dateParts = useMemo(() => getDateParts(date), [date]);
-  
-  const targetPath = [
-    filePath.trim().replace(/^\/+|\/+$/g, ""),
-    String(dateParts.year),
-    dateParts.fileName
-  ]
-    .filter(Boolean)
-    .join("/");
-
+  const targetPath = filePath.trim() ? `${filePath.trim().replace(/^\/|\/$/g, "")}/${dateParts.fileName}` : dateParts.fileName;
   const repoMatch = ownerRepo.trim().match(/^(?:https:\/\/github\.com\/)?([^/\s]+)\/([^/\s#?]+)\/?$/);
   const owner = repoMatch?.[1];
   const repo = repoMatch?.[2]?.replace(/\.git$/, "");
