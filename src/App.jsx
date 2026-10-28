@@ -6,17 +6,29 @@ const todayInIndia = () => new Intl.DateTimeFormat("en-CA", {
   timeZone: "Asia/Kolkata", year: "numeric", month: "2-digit", day: "2-digit"
 }).format(new Date());
 
+
 function getDateParts(dateString) {
   const [year, month, day] = dateString.split("-").map(Number);
-  const date = new Date(Date.UTC(year, month - 1, day));
-  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+  const months = [
+    "january", "february", "march", "april",
+    "may", "june", "july", "august",
+    "september", "october", "november", "december"
+  ];
+
+  const shortMonths = [
+    "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+    "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
+  ];
+
   return {
     year,
     monthNumber: month,
-    dateHeading: `${String(day).padStart(2, "0")}-${months[month - 1]}-${year}`,
-    fileName: `line ${year}-${months[month - 1]}.txt`
+    dateHeading: `${String(day).padStart(2, "0")}-${shortMonths[month - 1]}-${year}`,
+    fileName: `line-${year}-${months[month - 1]}-logs.txt`
   };
 }
+
 
 function normalizeUrls(raw) {
   const values = raw.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
@@ -89,7 +101,15 @@ export default function App() {
 
   const { urls, invalid } = useMemo(() => normalizeUrls(ticketInput), [ticketInput]);
   const dateParts = useMemo(() => getDateParts(date), [date]);
-  const targetPath = filePath.trim() ? `${filePath.trim().replace(/^\/|\/$/g, "")}/${dateParts.fileName}` : dateParts.fileName;
+  
+  const targetPath = [
+    filePath.trim().replace(/^\/+|\/+$/g, ""),
+    String(dateParts.year),
+    dateParts.fileName
+  ]
+    .filter(Boolean)
+    .join("/");
+
   const repoMatch = ownerRepo.trim().match(/^(?:https:\/\/github\.com\/)?([^/\s]+)\/([^/\s#?]+)\/?$/);
   const owner = repoMatch?.[1];
   const repo = repoMatch?.[2]?.replace(/\.git$/, "");
