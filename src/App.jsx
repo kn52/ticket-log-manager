@@ -369,7 +369,7 @@ export default function App() {
     <main className="app-shell">
       <header className="topbar">
         <div className="brand-mark"><FileText size={22} /></div>
-        <div className="brand-copy"><strong>Ticket Log Manager</strong><span>Jira to GitHub · Monthly logs</span></div>
+        <div className="brand-copy"><strong>Ticket Log Manager</strong><span>Jira/Details to GitHub · logs</span></div>
         <div className="top-chip"><span className="status-dot" /> Ready</div>
       </header>
 
