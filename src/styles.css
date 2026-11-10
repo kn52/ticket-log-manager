@@ -190,6 +190,10 @@ html body .token-section {
   margin-top: 24px;
 }
 
+html body .path-section {
+  margin-top: 24px;
+}
+
 html body .token-wrap {
   min-height: 46px;
   border-color: #dfe3ed;

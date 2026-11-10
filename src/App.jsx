@@ -401,7 +401,7 @@ export default function App() {
               {showValidation && validationErrors.logType && <span className="invalid-count" role="alert">{validationErrors.logType}</span>}
             </div>
           </div>
-          <div>
+          <div className="path-section">
             <label htmlFor="path">Folder path <span className="optional">{logType === "worklogs" ? "optional" : "required"}</span></label>
             <input id="path" value={filePath} onChange={e => setFilePath(e.target.value)} placeholder={logType === "worklogs" ? "Optional, e.g. project" : "Required, e.g. project"} aria-invalid={showValidation && Boolean(validationErrors.filePath)} style={showValidation && validationErrors.filePath ? { borderColor: "#dc2626" } : undefined} />
             {showValidation && validationErrors.filePath && <span className="invalid-count" role="alert">{validationErrors.filePath}</span>}
