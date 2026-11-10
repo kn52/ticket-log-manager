@@ -375,8 +375,8 @@ export default function App() {
 
       <section className="hero">
         <div className="eyebrow"><span className="eyebrow-line" /> WORKFLOW AUTOMATION</div>
-        <h1>Log tickets.<br /><span>Skip the manual work.</span></h1>
-        <p>Paste Jira ticket links and update your monthly GitHub text file with the right date section—without duplicate entries.</p>
+        <h1>Logs.<br /><span>Skip the manual work.</span></h1>
+        <p>Paste ticket links and update your GitHub text file with the right date section—without duplicate entries.</p>
       </section>
 
       <section className="workspace">
@@ -453,7 +453,7 @@ export default function App() {
         </div>
 
         <aside className="preview-panel">
-          <div className="preview-header"><div><span className="preview-kicker">LIVE PREVIEW</span><h2>Monthly log</h2></div><button className="icon-button" onClick={() => setPreviewOpen(v => !v)} aria-label="Toggle preview">{previewOpen ? <EyeOff size={17} /> : <Eye size={17} />}</button></div>
+          <div className="preview-header"><div><span className="preview-kicker">LIVE PREVIEW</span><h2>Detailed log</h2></div><button className="icon-button" onClick={() => setPreviewOpen(v => !v)} aria-label="Toggle preview">{previewOpen ? <EyeOff size={17} /> : <Eye size={17} />}</button></div>
           <div className="preview-file"><FileText size={16} /><span>{targetFileName || "Select a log type"}</span><span className="branch-pill">{branch.trim() || "main"}</span></div>
           {previewOpen && <div className="code-preview">{previewContent ? previewContent.split("\n").map((line, index) => <div className={`code-line ${/^\d{2}-[A-Z][a-z]{2}-\d{4}$/.test(line) ? "date-line" : line === "++++++++" ? "separator-line" : line.startsWith("https://") ? "url-line" : ""}`} key={`${index}-${line}`}>{line || "\u00a0"}</div>) : <div className="empty-preview"><div className="empty-icon"><Link2 size={22} /></div><strong>Your log preview appears here</strong><span>Enter your repository and tickets, then choose Preview update.</span></div>}</div>}
           <div className="rules-card"><strong><CheckCircle2 size={16} /> Formatting rules</strong><ul><li>Date heading: <code>dd-MMM-yyyy</code></li><li>Section divider: <code>++++++++</code></li><li>Exactly two blank lines between date sections</li><li>Ticket URLs listed once per date</li><li>Creates the monthly file if missing</li></ul></div>
