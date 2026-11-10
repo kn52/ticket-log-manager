@@ -88,6 +88,7 @@ function encodeContent(text) {
 export default function App() {
   const [ownerRepo, setOwnerRepo] = useState("");
   const [branch, setBranch] = useState("main");
+  const [logType, setLogType] = useState("");
   const [filePath, setFilePath] = useState("");
   const [yearFolder, setYearFolder] = useState("");
   const [customFileName, setCustomFileName] = useState("");
@@ -100,24 +101,38 @@ export default function App() {
   const [previewOpen, setPreviewOpen] = useState(true);
   const [previewContent, setPreviewContent] = useState("");
   const [previewMeta, setPreviewMeta] = useState(null);
+  const [showValidation, setShowValidation] = useState(false);
 
   const { urls, invalid } = useMemo(() => normalizeUrls(ticketInput), [ticketInput]);
   const dateParts = useMemo(() => getDateParts(date), [date]);
-  const targetFileName = customFileName.trim() || dateParts.fileName;
   const folderPathParts = filePath.trim().split(/[\\/]+/).filter(Boolean);
-  const targetPath = [
-    ...folderPathParts,
-    "logs",
-    ...(yearFolder ? [yearFolder] : []),
-    targetFileName
-  ].join("/");
-  const currentYear = new Date().getFullYear();
-  const firstYear = Math.min(dateParts.year, currentYear) - 10;
-  const lastYear = Math.max(dateParts.year, currentYear) + 10;
-  const yearOptions = Array.from(
-    { length: lastYear - firstYear + 1 },
-    (_, index) => firstYear + index
-  );
+  const targetFileName = logType === "worklogs"
+    ? (customFileName.trim() || dateParts.fileName)
+    : (customFileName.trim()
+        ? `${customFileName.trim().replace(/\.txt$/i, "")}${yearFolder.trim() ? `-${yearFolder.trim()}` : ""}.txt`
+        : "");
+
+  const targetPath = logType === "worklogs"
+    ? ["worklogs", yearFolder.trim(), ...folderPathParts, targetFileName].filter(Boolean).join("/")
+    : [...folderPathParts, targetFileName].filter(Boolean).join("/");
+
+  const validationErrors = {
+    logType: !logType
+      ? "Select a log type."
+      : "",
+    yearFolder: logType === "worklogs" && !yearFolder.trim()
+      ? "Year is required for Worklogs."
+      : yearFolder.trim() && !/^\d{4}$/.test(yearFolder.trim())
+        ? "Enter a valid 4-digit year."
+        : "",
+    filePath: logType === "others" && !filePath.trim()
+      ? "Folder path is required for Others."
+      : "",
+    customFileName: logType === "others" && !customFileName.trim()
+      ? "File name is required for Others."
+      : ""
+  };
+  const hasValidationErrors = Object.values(validationErrors).some(Boolean);
   const repoMatch = ownerRepo.trim().match(/^(?:https:\/\/github\.com\/)?([^/\s]+)\/([^/\s#?]+)\/?$/);
   const owner = repoMatch?.[1];
   const repo = repoMatch?.[2]?.replace(/\.git$/, "");
@@ -151,6 +166,11 @@ export default function App() {
 
   async function loadPreview() {
     setMessage(null);
+    setShowValidation(true);
+    if (hasValidationErrors) {
+      setMessage({ type: "error", text: "Please fix the highlighted required fields." });
+      return;
+    }
     if (!owner || !repo || !token.trim()) {
       setMessage({ type: "error", text: "Enter a valid GitHub repository URL and a GitHub token to load a preview." });
       return;
@@ -182,6 +202,12 @@ export default function App() {
   
   async function saveToGithub() {
     setMessage(null);
+    setShowValidation(true);
+
+    if (hasValidationErrors) {
+      setMessage({ type: "error", text: "Please fix the highlighted required fields." });
+      return;
+    }
   
     if (!owner || !repo) {
       setMessage({
@@ -365,21 +391,36 @@ export default function App() {
 
           <div className="two-col">
             <div><label htmlFor="branch">Branch</label><input id="branch" value={branch} onChange={e => setBranch(e.target.value)} placeholder="main" /></div>
-            <div><label htmlFor="path">Folder path <span className="optional">optional</span></label><input id="path" value={filePath} onChange={e => setFilePath(e.target.value)} placeholder="e.g. work" /></div>
+            <div>
+              <label htmlFor="log-type">Log type</label>
+              <select id="log-type" value={logType} onChange={e => { setLogType(e.target.value); setShowValidation(false); }}>
+                <option value="" disabled>Select log type</option>
+                <option value="worklogs">Worklogs</option>
+                <option value="others">Others</option>
+              </select>
+              {showValidation && validationErrors.logType && <span className="invalid-count" role="alert">{validationErrors.logType}</span>}
+            </div>
+          </div>
+          <div>
+            <label htmlFor="path">Folder path <span className="optional">{logType === "worklogs" ? "optional" : "required"}</span></label>
+            <input id="path" value={filePath} onChange={e => setFilePath(e.target.value)} placeholder={logType === "worklogs" ? "Optional, e.g. project" : "Required, e.g. project"} aria-invalid={showValidation && Boolean(validationErrors.filePath)} style={showValidation && validationErrors.filePath ? { borderColor: "#dc2626" } : undefined} />
+            {showValidation && validationErrors.filePath && <span className="invalid-count" role="alert">{validationErrors.filePath}</span>}
           </div>
 
-          <label htmlFor="token">GitHub personal access token</label>
-          <div className="token-wrap"><input id="token" type={showToken ? "text" : "password"} value={token} onChange={e => setToken(e.target.value)} placeholder="github_pat_••••••••••••" autoComplete="off" /><button className="icon-button" type="button" onClick={() => setShowToken(v => !v)} aria-label={showToken ? "Hide token" : "Show token"}>{showToken ? <EyeOff size={17} /> : <Eye size={17} />}</button></div>
-          <p className="hint">Use a fine-grained token limited to this repository with <b>Contents: Read and write</b>. The token stays in this tab and is not saved by this app.</p>
+          <div className="token-section">
+            <label htmlFor="token">GitHub personal access token</label>
+            <div className="token-wrap"><input id="token" type={showToken ? "text" : "password"} value={token} onChange={e => setToken(e.target.value)} placeholder="Paste your GitHub token" autoComplete="off" /><button className="icon-button" type="button" onClick={() => setShowToken(v => !v)} aria-label={showToken ? "Hide token" : "Show token"}>{showToken ? <EyeOff size={17} /> : <Eye size={17} />}</button></div>
+            <p className="hint">Use a fine-grained token limited to this repository with <b>Contents: Read and write</b>. The token stays in this tab and is not saved by this app.</p>
+          </div>
 
           <div className="section-divider" />
 
           <div className="section-heading">
             <div className="step-number">02</div>
-            <div><h2>Add Jira tickets</h2><p>One ticket URL per line. Duplicate links are removed.</p></div>
+            <div><h2>Add log details</h2><p>Enter the details to include in this log.</p></div>
           </div>
-          <label htmlFor="tickets">Jira ticket URLs</label>
-          <textarea id="tickets" rows={5} value={ticketInput} onChange={e => setTicketInput(e.target.value)} placeholder={"https://your-company.atlassian.net/browse/PROJ-123\nhttps://your-company.atlassian.net/browse/PROJ-124"} />
+          <label htmlFor="tickets">Jira ticket URLs/Details</label>
+          <textarea id="tickets" rows={5} value={ticketInput} onChange={e => setTicketInput(e.target.value)} placeholder={"Paste one Jira URL per line, for example:\nhttps://your-domain.atlassian.net/browse/PROJ-123"} />
           <div className="input-footer"><span>{urls.length} unique {urls.length === 1 ? "ticket" : "tickets"}</span>{invalid.length > 0 && <span className="invalid-count">{invalid.length} invalid URL(s)</span>}</div>
 
           <div className="section-divider" />
@@ -390,15 +431,14 @@ export default function App() {
           <div className="date-control"><CalendarDays size={18} /><input type="date" value={date} onChange={e => setDate(e.target.value)} /></div>
           <div className="two-col file-options">
             <div>
-              <label htmlFor="year-folder">Year folder <span className="optional">optional</span></label>
-              <select id="year-folder" value={yearFolder} onChange={e => setYearFolder(e.target.value)}>
-                <option value="">No year folder</option>
-                {yearOptions.map(year => <option key={year} value={year}>{year}</option>)}
-              </select>
+              <label htmlFor="year-folder">Year <span className="optional">{logType === "worklogs" ? "required" : "optional"}</span></label>
+              <input id="year-folder" type="text" value={yearFolder} onChange={e => setYearFolder(e.target.value)} placeholder="e.g. 2026" aria-invalid={showValidation && Boolean(validationErrors.yearFolder)} style={showValidation && validationErrors.yearFolder ? { borderColor: "#dc2626" } : undefined} />
+              {showValidation && validationErrors.yearFolder && <span className="invalid-count" role="alert">{validationErrors.yearFolder}</span>}
             </div>
             <div>
-              <label htmlFor="file-name">File name <span className="optional">optional</span></label>
-              <input id="file-name" value={customFileName} onChange={e => setCustomFileName(e.target.value)} placeholder={dateParts.fileName} />
+              <label htmlFor="file-name">File name <span className="optional">{logType === "worklogs" ? "optional" : "required"}</span></label>
+              <input id="file-name" value={customFileName} onChange={e => setCustomFileName(e.target.value)} placeholder={logType === "worklogs" ? dateParts.fileName : "Enter file name"} aria-invalid={showValidation && Boolean(validationErrors.customFileName)} style={showValidation && validationErrors.customFileName ? { borderColor: "#dc2626" } : undefined} />
+              {showValidation && validationErrors.customFileName && <span className="invalid-count" role="alert">{validationErrors.customFileName}</span>}
             </div>
           </div>
           <div className="file-target"><FileText size={18} /><div><span>Target file</span><strong>{targetPath}</strong></div><span className="file-tag">{targetFileName.includes(".") ? targetFileName.split(".").pop().toUpperCase() : "FILE"}</span></div>
@@ -414,7 +454,7 @@ export default function App() {
 
         <aside className="preview-panel">
           <div className="preview-header"><div><span className="preview-kicker">LIVE PREVIEW</span><h2>Monthly log</h2></div><button className="icon-button" onClick={() => setPreviewOpen(v => !v)} aria-label="Toggle preview">{previewOpen ? <EyeOff size={17} /> : <Eye size={17} />}</button></div>
-          <div className="preview-file"><FileText size={16} /><span>{targetFileName}</span><span className="branch-pill">{branch.trim() || "main"}</span></div>
+          <div className="preview-file"><FileText size={16} /><span>{targetFileName || "Select a log type"}</span><span className="branch-pill">{branch.trim() || "main"}</span></div>
           {previewOpen && <div className="code-preview">{previewContent ? previewContent.split("\n").map((line, index) => <div className={`code-line ${/^\d{2}-[A-Z][a-z]{2}-\d{4}$/.test(line) ? "date-line" : line === "++++++++" ? "separator-line" : line.startsWith("https://") ? "url-line" : ""}`} key={`${index}-${line}`}>{line || "\u00a0"}</div>) : <div className="empty-preview"><div className="empty-icon"><Link2 size={22} /></div><strong>Your log preview appears here</strong><span>Enter your repository and tickets, then choose Preview update.</span></div>}</div>}
           <div className="rules-card"><strong><CheckCircle2 size={16} /> Formatting rules</strong><ul><li>Date heading: <code>dd-MMM-yyyy</code></li><li>Section divider: <code>++++++++</code></li><li>Exactly two blank lines between date sections</li><li>Ticket URLs listed once per date</li><li>Creates the monthly file if missing</li></ul></div>
           {previewMeta && <div className="preview-stats"><div><span>New links</span><strong>{previewMeta.added.length}</strong></div><div><span>Already logged</span><strong>{previewMeta.duplicates.length}</strong></div></div>}
