@@ -21,3 +21,8 @@ https://easyrewardz.atlassian.net/browse/CACSD-1257
 ++++++++
 https://easyrewardz.atlassian.net/browse/CGV-194
 https://easyrewardz.atlassian.net/browse/CACSD-1259
+
+
+06-Nov-2026
+++++++++
+https://easyrewardz.atlassian.net/browse/CACSD-1259
