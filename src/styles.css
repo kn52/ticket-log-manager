@@ -1,5 +1,7 @@
 @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&display=swap');
 
+.two-col select{width:100%;border:1px solid #e1e4ed;background:#fcfcfe;border-radius:9px;padding:11px 12px;color:#25293b;font-size:13px;outline:none;transition:border .15s,box-shadow .15s}.two-col select:focus{border-color:#928cf0;box-shadow:0 0 0 3px #7068e51a}
+
 :root{font-family:'DM Sans',sans-serif;color:#202437;background:#f6f7fb;font-synthesis:none;text-rendering:optimizeLegibility;-webkit-font-smoothing:antialiased}
 *{box-sizing:border-box}body{margin:0;min-width:320px;background:radial-gradient(ellipse at 18% 0%,#eef0ff 0%,transparent 38%),#f6f7fb}
 button,input,textarea{font:inherit}button{cursor:pointer}.app-shell{max-width:1180px;margin:0 auto;padding:26px 30px 24px}.topbar{display:flex;align-items:center;gap:12px;padding:4px 0 24px;border-bottom:1px solid #e5e7ef}.brand-mark{height:42px;width:42px;display:grid;place-items:center;background:#4f46e5;color:white;border-radius:13px;box-shadow:0 7px 16px #4f46e52c}.brand-copy{display:flex;flex-direction:column;gap:3px}.brand-copy strong{font-size:15px;letter-spacing:-.3px}.brand-copy span{font-size:12px;color:#85899c}.top-chip{margin-left:auto;border:1px solid #e0e5e9;background:#fff;border-radius:100px;padding:7px 11px;display:flex;align-items:center;gap:7px;color:#687080;font-size:12px;font-weight:600}.status-dot{display:inline-block;width:7px;height:7px;background:#22b573;border-radius:50%}

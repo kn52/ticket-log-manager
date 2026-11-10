@@ -89,6 +89,8 @@ export default function App() {
   const [ownerRepo, setOwnerRepo] = useState("");
   const [branch, setBranch] = useState("main");
   const [filePath, setFilePath] = useState("");
+  const [yearFolder, setYearFolder] = useState("");
+  const [customFileName, setCustomFileName] = useState("");
   const [token, setToken] = useState("");
   const [showToken, setShowToken] = useState(false);
   const [ticketInput, setTicketInput] = useState("");
@@ -101,11 +103,21 @@ export default function App() {
 
   const { urls, invalid } = useMemo(() => normalizeUrls(ticketInput), [ticketInput]);
   const dateParts = useMemo(() => getDateParts(date), [date]);
+  const targetFileName = customFileName.trim() || dateParts.fileName;
+  const folderPathParts = filePath.trim().split(/[\\/]+/).filter(Boolean);
   const targetPath = [
+    ...folderPathParts,
     "logs",
-    String(dateParts.year),
-    dateParts.fileName
+    ...(yearFolder ? [yearFolder] : []),
+    targetFileName
   ].join("/");
+  const currentYear = new Date().getFullYear();
+  const firstYear = Math.min(dateParts.year, currentYear) - 10;
+  const lastYear = Math.max(dateParts.year, currentYear) + 10;
+  const yearOptions = Array.from(
+    { length: lastYear - firstYear + 1 },
+    (_, index) => firstYear + index
+  );
   const repoMatch = ownerRepo.trim().match(/^(?:https:\/\/github\.com\/)?([^/\s]+)\/([^/\s#?]+)\/?$/);
   const owner = repoMatch?.[1];
   const repo = repoMatch?.[2]?.replace(/\.git$/, "");
@@ -272,7 +284,7 @@ export default function App() {
       }
   
       const payload = {
-        message: `${sha ? "Update" : "Create"} ${dateParts.fileName} - ${dateParts.dateHeading}`,
+        message: `${sha ? "Update" : "Create"} ${targetFileName} - ${dateParts.dateHeading}`,
         content: encodeContent(content),
         branch: ref
       };
@@ -353,7 +365,7 @@ export default function App() {
 
           <div className="two-col">
             <div><label htmlFor="branch">Branch</label><input id="branch" value={branch} onChange={e => setBranch(e.target.value)} placeholder="main" /></div>
-            <div><label htmlFor="path">Folder path <span className="optional">optional</span></label><input id="path" value={filePath} onChange={e => setFilePath(e.target.value)} placeholder="e.g. worklogs/2026" /></div>
+            <div><label htmlFor="path">Folder path <span className="optional">optional</span></label><input id="path" value={filePath} onChange={e => setFilePath(e.target.value)} placeholder="e.g. work" /></div>
           </div>
 
           <label htmlFor="token">GitHub personal access token</label>
@@ -376,7 +388,20 @@ export default function App() {
             <div><h2>Choose log date</h2><p>Uses India time by default.</p></div>
           </div>
           <div className="date-control"><CalendarDays size={18} /><input type="date" value={date} onChange={e => setDate(e.target.value)} /></div>
-          <div className="file-target"><FileText size={18} /><div><span>Target file</span><strong>{targetPath}</strong></div><span className="file-tag">.TXT</span></div>
+          <div className="two-col file-options">
+            <div>
+              <label htmlFor="year-folder">Year folder <span className="optional">optional</span></label>
+              <select id="year-folder" value={yearFolder} onChange={e => setYearFolder(e.target.value)}>
+                <option value="">No year folder</option>
+                {yearOptions.map(year => <option key={year} value={year}>{year}</option>)}
+              </select>
+            </div>
+            <div>
+              <label htmlFor="file-name">File name <span className="optional">optional</span></label>
+              <input id="file-name" value={customFileName} onChange={e => setCustomFileName(e.target.value)} placeholder={dateParts.fileName} />
+            </div>
+          </div>
+          <div className="file-target"><FileText size={18} /><div><span>Target file</span><strong>{targetPath}</strong></div><span className="file-tag">{targetFileName.includes(".") ? targetFileName.split(".").pop().toUpperCase() : "FILE"}</span></div>
 
           {message && <div className={`notice ${message.type}`} role="status">{message.type === "success" ? <CheckCircle2 size={18} /> : <AlertCircle size={18} />}<div>{message.text}{message.url && <a href={message.url} target="_blank" rel="noreferrer">Open on GitHub <ExternalLink size={13} /></a>}</div></div>}
 
@@ -389,7 +414,7 @@ export default function App() {
 
         <aside className="preview-panel">
           <div className="preview-header"><div><span className="preview-kicker">LIVE PREVIEW</span><h2>Monthly log</h2></div><button className="icon-button" onClick={() => setPreviewOpen(v => !v)} aria-label="Toggle preview">{previewOpen ? <EyeOff size={17} /> : <Eye size={17} />}</button></div>
-          <div className="preview-file"><FileText size={16} /><span>{dateParts.fileName}</span><span className="branch-pill">{branch.trim() || "main"}</span></div>
+          <div className="preview-file"><FileText size={16} /><span>{targetFileName}</span><span className="branch-pill">{branch.trim() || "main"}</span></div>
           {previewOpen && <div className="code-preview">{previewContent ? previewContent.split("\n").map((line, index) => <div className={`code-line ${/^\d{2}-[A-Z][a-z]{2}-\d{4}$/.test(line) ? "date-line" : line === "++++++++" ? "separator-line" : line.startsWith("https://") ? "url-line" : ""}`} key={`${index}-${line}`}>{line || "\u00a0"}</div>) : <div className="empty-preview"><div className="empty-icon"><Link2 size={22} /></div><strong>Your log preview appears here</strong><span>Enter your repository and tickets, then choose Preview update.</span></div>}</div>}
           <div className="rules-card"><strong><CheckCircle2 size={16} /> Formatting rules</strong><ul><li>Date heading: <code>dd-MMM-yyyy</code></li><li>Section divider: <code>++++++++</code></li><li>Exactly two blank lines between date sections</li><li>Ticket URLs listed once per date</li><li>Creates the monthly file if missing</li></ul></div>
           {previewMeta && <div className="preview-stats"><div><span>New links</span><strong>{previewMeta.added.length}</strong></div><div><span>Already logged</span><strong>{previewMeta.duplicates.length}</strong></div></div>}
