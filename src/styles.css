@@ -510,13 +510,13 @@ html body .reader-panel {
   margin: 22px 0;
 }
 
-.folder-search-controls {
+.query-search-controls {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 12px;
 }
 
-.folder-search-controls .primary-button {
+.query-search-controls .primary-button {
   min-width: 120px;
 }
 
@@ -633,11 +633,11 @@ html body .notice.info {
 @media (max-width: 560px) {
   .connection-fields,
   .reader-toolbar,
-  .folder-search-controls {
+  .query-search-controls {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .folder-search-controls .primary-button {
+  .query-search-controls .primary-button {
     width: 100%;
   }
 }
