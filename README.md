@@ -4,7 +4,7 @@ A React + Vite app that updates a monthly plain-text log in GitHub from Jira tic
 
 ## Features
 
-- Reads the selected monthly file from GitHub, or creates it if it does not exist.
+- Reads the selected file from GitHub, or creates it and any missing parent folders if it does not exist.
 - Default file naming: `line-MMM-yyyy-logs.txt` (for example, `line-Nov-2026-logs.txt`).
 - Target path: `[folder path/]logs/[optional year folder/]filename`. For example, folder path `work` and year `2026` produce `work/logs/2026/line-Nov-2026-logs.txt`.
 - The year folder and custom file name are optional. Without a custom name, the app uses the default name based on the selected log date.

@@ -109,6 +109,7 @@ export default function App() {
   const [previewContent, setPreviewContent] = useState("");
   const [previewMeta, setPreviewMeta] = useState(null);
   const [showValidation, setShowValidation] = useState(false);
+  const [showUploadValidation, setShowUploadValidation] = useState(false);
 
   const entries = useMemo(() => normalizeEntries(ticketInput), [ticketInput]);
   const dateParts = useMemo(() => getDateParts(date), [date]);
@@ -146,15 +147,25 @@ export default function App() {
 
   
   async function githubRequest(path, options = {}) {
-    const response = await fetch(`${API}${path}`, {
-      ...options,
-      headers: {
-        Accept: "application/vnd.github+json",
+    let response;
+    try {
+      response = await fetch(`${API}${path}`, {
+        ...options,
+        headers: {
+          Accept: "application/vnd.github+json",
         Authorization: `Bearer ${token.trim()}`,
         "X-GitHub-Api-Version": "2022-11-28",
         ...(options.headers || {})
       }
-    });
+      });
+    } catch (error) {
+      if (error instanceof TypeError) {
+        throw new Error(
+          `Could not connect to GitHub API (${error.message}). Check your internet connection, VPN/proxy, firewall, or browser extensions; GitHub returned no HTTP response.`
+        );
+      }
+      throw error;
+    }
   
     const data = response.status === 204
       ? null
@@ -222,32 +233,16 @@ export default function App() {
   async function saveToGithub() {
     setMessage(null);
     setShowValidation(true);
+    setShowUploadValidation(true);
 
-    if (hasValidationErrors) {
-      setMessage({ type: "error", text: "Please fix the highlighted required fields." });
-      return;
-    }
-  
-    if (!owner || !repo) {
+    const uploadErrors = Object.values(validationErrors).filter(Boolean);
+    if (!owner || !repo) uploadErrors.push("Enter a valid GitHub repository URL.");
+    if (!token.trim()) uploadErrors.push("Enter a GitHub token with repository Contents read/write permission.");
+    if (!entries.length) uploadErrors.push("Enter at least one ticket or summary detail.");
+    if (uploadErrors.length) {
       setMessage({
         type: "error",
-        text: "Enter a valid GitHub repository URL."
-      });
-      return;
-    }
-  
-    if (!token.trim()) {
-      setMessage({
-        type: "error",
-        text: "Enter a GitHub token with repository Contents read/write permission."
-      });
-      return;
-    }
-  
-    if (!entries.length) {
-      setMessage({
-        type: "error",
-        text: "Enter at least one Jira ticket or summary detail."
+        text: uploadErrors.join(" ")
       });
       return;
     }
@@ -333,7 +328,7 @@ export default function App() {
         payload.sha = sha;
       }
   
-      // GitHub creates missing directories and the file automatically.
+      // The Contents API creates missing parent directories when it creates the file.
       const saved = await githubRequest(
         `/repos/${owner}/${repo}/contents/${encodedPath}`,
         {
@@ -362,14 +357,14 @@ export default function App() {
   
       setMessage({
         type: "success",
-        text: `${sha ? "Updated" : "Created"} ${targetPath} successfully.`,
+        text: `${sha ? "Updated" : `Created ${targetPath} and any missing folders`} successfully.`,
         url: fileUrl
       });
   
     } catch (error) {
       setMessage({
         type: "error",
-        text: error.message || "Failed to save the log to GitHub."
+        text: `Upload failed: ${error.message || "Could not save the log to GitHub."}`
       });
     } finally {
       setBusy(false);
@@ -399,7 +394,8 @@ export default function App() {
           </div>
 
           <label htmlFor="repo">GitHub repository URL</label>
-          <div className="input-with-icon"><Github size={17} /><input id="repo" value={ownerRepo} onChange={e => setOwnerRepo(e.target.value)} placeholder="https://github.com/owner/repository" autoComplete="off" /></div>
+          <div className="input-with-icon"><Github size={17} /><input id="repo" value={ownerRepo} onChange={e => setOwnerRepo(e.target.value)} placeholder="https://github.com/owner/repository" autoComplete="off" aria-invalid={showUploadValidation && (!owner || !repo)} style={showUploadValidation && (!owner || !repo) ? { borderColor: "#dc2626" } : undefined} /></div>
+          {showUploadValidation && (!owner || !repo) && <span className="invalid-count" role="alert">Enter a valid GitHub repository URL.</span>}
 
           <div className="two-col">
             <div><label htmlFor="branch">Branch</label><input id="branch" value={branch} onChange={e => setBranch(e.target.value)} placeholder="main" /></div>
@@ -421,7 +417,8 @@ export default function App() {
 
           <div className="token-section">
             <label htmlFor="token">GitHub personal access token</label>
-            <div className="token-wrap"><input id="token" type={showToken ? "text" : "password"} value={token} onChange={e => setToken(e.target.value)} placeholder="Paste your GitHub token" autoComplete="off" /><button className="icon-button" type="button" onClick={() => setShowToken(v => !v)} aria-label={showToken ? "Hide token" : "Show token"}>{showToken ? <EyeOff size={17} /> : <Eye size={17} />}</button></div>
+            <div className="token-wrap"><input id="token" type={showToken ? "text" : "password"} value={token} onChange={e => setToken(e.target.value)} placeholder="Paste your GitHub token" autoComplete="off" aria-invalid={showUploadValidation && !token.trim()} style={showUploadValidation && !token.trim() ? { borderColor: "#dc2626" } : undefined} /><button className="icon-button" type="button" onClick={() => setShowToken(v => !v)} aria-label={showToken ? "Hide token" : "Show token"}>{showToken ? <EyeOff size={17} /> : <Eye size={17} />}</button></div>
+            {showUploadValidation && !token.trim() && <span className="invalid-count" role="alert">Enter a GitHub token with repository Contents read/write permission.</span>}
             <p className="hint">Use a fine-grained token limited to this repository with <b>Contents: Read and write</b>. The token stays in this tab and is not saved by this app.</p>
           </div>
 
@@ -432,8 +429,9 @@ export default function App() {
             <div><h2>Add log details</h2><p>Enter the details to include in this log.</p></div>
           </div>
           <label htmlFor="tickets">Jira ticket / summary details</label>
-          <textarea id="tickets" rows={5} value={ticketInput} onChange={e => setTicketInput(e.target.value)} placeholder={"Enter a Jira URL or a summary, for example:\nhttps://your-domain.atlassian.net/browse/PROJ-123\nInvestigated the issue and updated the workflow"} />
+          <textarea id="tickets" rows={5} value={ticketInput} onChange={e => setTicketInput(e.target.value)} placeholder={"Enter a Jira URL or a summary, for example:\nhttps://your-domain.atlassian.net/browse/PROJ-123\nInvestigated the issue and updated the workflow"} aria-invalid={showUploadValidation && !entries.length} style={showUploadValidation && !entries.length ? { borderColor: "#dc2626" } : undefined} />
           <div className="input-footer"><span>{entries.length} unique {entries.length === 1 ? "entry" : "entries"}</span></div>
+          {showUploadValidation && !entries.length && <span className="invalid-count" role="alert">Enter at least one ticket or summary detail.</span>}
 
           <div className="section-divider" />
           <div className="section-heading compact">
@@ -455,11 +453,11 @@ export default function App() {
           </div>
           <div className="file-target"><FileText size={18} /><div><span>Target file</span><strong>{targetPath}</strong></div><span className="file-tag">{targetFileName.includes(".") ? targetFileName.split(".").pop().toUpperCase() : "FILE"}</span></div>
 
-          {message && <div className={`notice ${message.type}`} role="status">{message.type === "success" ? <CheckCircle2 size={18} /> : <AlertCircle size={18} />}<div>{message.text}{message.url && <a href={message.url} target="_blank" rel="noreferrer">Open on GitHub <ExternalLink size={13} /></a>}</div></div>}
+          {message && <div className={`notice ${message.type}`} role={message.type === "error" ? "alert" : "status"}>{message.type === "success" ? <CheckCircle2 size={18} /> : <AlertCircle size={18} />}<div>{message.text}{message.url && <a href={message.url} target="_blank" rel="noreferrer">Open on GitHub <ExternalLink size={13} /></a>}</div></div>}
 
           <div className="actions">
             <button className="secondary-button" onClick={loadPreview} disabled={busy}><Eye size={17} /> Preview update</button>
-            <button className="primary-button" onClick={saveToGithub} disabled={busy || !entries.length}>{busy ? <><LoaderCircle className="spin" size={17} /> Working…</> : <><Github size={17} /> Save to GitHub</>}</button>
+            <button className="primary-button" onClick={saveToGithub} disabled={busy}>{busy ? <><LoaderCircle className="spin" size={17} /> Working…</> : <><Github size={17} /> Save to GitHub</>}</button>
           </div>
           <p className="security-note"><AlertCircle size={14} /> Review the preview before saving. Saving creates a commit on the selected branch.</p>
         </div>
