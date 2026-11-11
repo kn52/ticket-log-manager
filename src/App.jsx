@@ -38,6 +38,8 @@ function normalizeEntries(raw) {
 function updateLog(existing, dateHeading, entries, logType) {
   // Preserve existing content and the required two blank lines between date sections.
   let content = (existing || "").replace(/\r\n/g, "\n").replace(/\n+$/, "");
+  if (!entries.length) return { content, added: [], duplicates: [] };
+
   if (logType === "others") {
     const existingEntries = new Set(content.split("\n").map(line => line.trim()).filter(Boolean));
     const additions = entries.filter(entry => !existingEntries.has(entry));
@@ -176,8 +178,20 @@ export default function App() {
       setMessage({ type: "error", text: "Please fix the highlighted required fields." });
       return;
     }
+
+    const draftResult = updateLog("", dateParts.dateHeading, entries, logType);
+    const draftContent = typeof draftResult === "string" ? draftResult : draftResult.content;
+    setPreviewContent(draftContent);
+    setPreviewMeta({
+      exists: false,
+      added: draftResult.added ?? entries,
+      duplicates: draftResult.duplicates ?? [],
+      count: entries.length
+    });
+    setPreviewOpen(true);
+
     if (!owner || !repo || !token.trim()) {
-      setMessage({ type: "error", text: "Enter a valid GitHub repository URL and a GitHub token to load a preview." });
+      setMessage({ type: "error", text: "Showing a draft preview. Enter a valid GitHub repository and token to fetch the existing file." });
       return;
     }
     setBusy(true);
@@ -198,7 +212,7 @@ export default function App() {
       setPreviewOpen(true);
       setMessage({ type: "success", text: existing ? "Existing file loaded and preview prepared." : "File does not exist yet; a new file will be created." });
     } catch (error) {
-      setMessage({ type: "error", text: error.message });
+      setMessage({ type: "error", text: `Could not fetch the existing file. Showing the draft preview only. ${error.message}` });
     } finally {
       setBusy(false);
     }
@@ -444,7 +458,7 @@ export default function App() {
           {message && <div className={`notice ${message.type}`} role="status">{message.type === "success" ? <CheckCircle2 size={18} /> : <AlertCircle size={18} />}<div>{message.text}{message.url && <a href={message.url} target="_blank" rel="noreferrer">Open on GitHub <ExternalLink size={13} /></a>}</div></div>}
 
           <div className="actions">
-            <button className="secondary-button" onClick={loadPreview} disabled={busy || !entries.length}><Eye size={17} /> Preview update</button>
+            <button className="secondary-button" onClick={loadPreview} disabled={busy}><Eye size={17} /> Preview update</button>
             <button className="primary-button" onClick={saveToGithub} disabled={busy || !entries.length}>{busy ? <><LoaderCircle className="spin" size={17} /> Working…</> : <><Github size={17} /> Save to GitHub</>}</button>
           </div>
           <p className="security-note"><AlertCircle size={14} /> Review the preview before saving. Saving creates a commit on the selected branch.</p>
@@ -455,7 +469,7 @@ export default function App() {
           <div className="preview-file"><FileText size={16} /><span>{targetFileName || "Select a log type"}</span><span className="branch-pill">{branch.trim() || "main"}</span></div>
           {previewOpen && <div className="code-preview">{previewContent ? previewContent.split("\n").map((line, index) => <div className={`code-line ${/^\d{2}-[A-Z][a-z]{2}-\d{4}$/.test(line) ? "date-line" : line === "++++++++" ? "separator-line" : line.startsWith("https://") ? "url-line" : ""}`} key={`${index}-${line}`}>{line || "\u00a0"}</div>) : <div className="empty-preview"><div className="empty-icon"><Link2 size={22} /></div><strong>Your log preview appears here</strong><span>Enter your repository and details, then choose Preview update.</span></div>}</div>}
           <div className="rules-card"><strong><CheckCircle2 size={16} /> Formatting rules</strong><ul><li>Date heading: <code>dd-MMM-yyyy</code></li><li>Section divider: <code>++++++++</code></li><li>Exactly two blank lines between date sections</li><li>Entries listed once per date</li><li>Creates the monthly file if missing</li></ul></div>
-          {previewMeta && <div className="preview-stats"><div><span>New links</span><strong>{previewMeta.added.length}</strong></div><div><span>Already logged</span><strong>{previewMeta.duplicates.length}</strong></div></div>}
+          {previewMeta && <div className="preview-stats"><div><span>New entries</span><strong>{previewMeta.added.length}</strong></div><div><span>Already logged</span><strong>{previewMeta.duplicates.length}</strong></div></div>}
           <div className="preview-footer"><span className="status-dot" /> Your changes are only committed when you click Save to GitHub.</div>
         </aside>
       </section>

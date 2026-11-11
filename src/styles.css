@@ -364,10 +364,12 @@ html body .preview-file > span:first-of-type {
 
 html body .code-preview {
   min-height: 280px;
+  max-height: 900px;
   padding: 17px 15px;
   border-color: #e7e8f1;
   background: #fcfcff;
   line-height: 2;
+  overflow-y: auto;
 }
 
 html body .rules-card {
