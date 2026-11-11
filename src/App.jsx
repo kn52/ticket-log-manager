@@ -29,6 +29,42 @@ function getDateParts(dateString) {
   };
 }
 
+function getTodoFileName(dateString) {
+  const { dateHeading } = getDateParts(dateString);
+  const [day, month, year] = dateHeading.split("-");
+  return `${day}-${month.toUpperCase()}-${year}.txt`;
+}
+
+function getTodoFileDate(fileName) {
+  const match = fileName.match(/^(\d{2})-([A-Z]{3})-(\d{4})\.txt$/);
+  if (!match) return null;
+
+  const months = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
+  const month = months.indexOf(match[2]);
+  if (month < 0) return null;
+
+  const date = new Date(Date.UTC(Number(match[3]), month, Number(match[1])));
+  if (date.getUTCFullYear() !== Number(match[3]) || date.getUTCMonth() !== month || date.getUTCDate() !== Number(match[1])) {
+    return null;
+  }
+  return date;
+}
+
+function extractDateSection(content, dateHeading) {
+  const lines = content.replace(/\r\n/g, "\n").split("\n");
+  const start = lines.findIndex(line => line.trim() === dateHeading);
+  if (start < 0) return "";
+
+  let end = lines.length;
+  for (let index = start + 1; index < lines.length; index += 1) {
+    if (/^\d{2}-[A-Z][a-z]{2}-\d{4}$/.test(lines[index].trim())) {
+      end = index;
+      break;
+    }
+  }
+  return lines.slice(start, end).join("\n").trimEnd();
+}
+
 
 function normalizeEntries(raw) {
   const values = raw.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
@@ -110,6 +146,16 @@ export default function App() {
   const [previewMeta, setPreviewMeta] = useState(null);
   const [showValidation, setShowValidation] = useState(false);
   const [showUploadValidation, setShowUploadValidation] = useState(false);
+  const [activeTab, setActiveTab] = useState("add");
+  const [searchFolder, setSearchFolder] = useState("");
+  const [searchCategory, setSearchCategory] = useState("");
+  const [worklogDate, setWorklogDate] = useState(todayInIndia());
+  const [worklogFolderPath, setWorklogFolderPath] = useState("");
+  const [businessFiles, setBusinessFiles] = useState([]);
+  const [businessFile, setBusinessFile] = useState("");
+  const [readerContent, setReaderContent] = useState("");
+  const [readerFile, setReaderFile] = useState("");
+  const [readerMessage, setReaderMessage] = useState(null);
 
   const entries = useMemo(() => normalizeEntries(ticketInput), [ticketInput]);
   const dateParts = useMemo(() => getDateParts(date), [date]);
@@ -123,6 +169,19 @@ export default function App() {
   const targetPath = logType === "worklogs"
     ? ["data", "worklogs", yearFolder.trim(), ...folderPathParts, targetFileName].filter(Boolean).join("/")
     : ["data", ...folderPathParts, targetFileName].filter(Boolean).join("/");
+  const searchPathFolder = searchFolder.trim().replace(/^data[\\/]/i, "").replace(/[\\/]+$/, "").toLowerCase();
+  const searchPathCategory = ["worklogs", "business", "todos"].includes(searchPathFolder) ? searchPathFolder : "";
+  const searchPath = searchPathCategory === "worklogs"
+    ? (() => {
+        const parts = getDateParts(worklogDate);
+        const subfolders = worklogFolderPath.trim().split(/[\\/]+/).filter(Boolean);
+        return ["data", "worklogs", String(parts.year), ...subfolders, parts.fileName].join("/");
+      })()
+    : searchPathCategory === "business"
+      ? ["data", "business", businessFile].filter(Boolean).join("/")
+      : searchPathCategory === "todos"
+        ? `data/todos/${getTodoFileName(todayInIndia())}`
+        : "";
 
   const validationErrors = {
     logType: !logType
@@ -144,6 +203,209 @@ export default function App() {
   const repoMatch = ownerRepo.trim().match(/^(?:https:\/\/github\.com\/)?([^/\s]+)\/([^/\s#?]+)\/?$/);
   const owner = repoMatch?.[1];
   const repo = repoMatch?.[2]?.replace(/\.git$/, "");
+  const selectedBranch = branch.trim() || "main";
+
+  function contentsEndpoint(path) {
+    const encodedPath = path.split("/").map(encodeURIComponent).join("/");
+    return `/repos/${owner}/${repo}/contents/${encodedPath}?ref=${encodeURIComponent(selectedBranch)}`;
+  }
+
+  function hasReaderConnection() {
+    if (!owner || !repo || !token.trim()) {
+      setReaderMessage({ type: "error", text: "Enter a valid GitHub repository and access token above first." });
+      return false;
+    }
+    return true;
+  }
+
+  async function fetchFileContent(path) {
+    const data = await githubRequest(contentsEndpoint(path));
+    if (Array.isArray(data)) throw new Error("The selected path is a directory, not a file.");
+    return decodeContent(data.content || "");
+  }
+
+  async function loadWorklogForDate() {
+    setReaderMessage(null);
+    setReaderContent("");
+    setReaderFile("");
+    if (!hasReaderConnection()) return;
+
+    const parts = getDateParts(worklogDate);
+    const subfolders = worklogFolderPath.trim().split(/[\\/]+/).filter(Boolean);
+    const path = ["data", "worklogs", String(parts.year), ...subfolders, parts.fileName].join("/");
+    setBusy(true);
+    try {
+      const content = await fetchFileContent(path);
+      const section = extractDateSection(content, parts.dateHeading);
+      setReaderFile(path);
+      setReaderContent(section);
+      setReaderMessage({
+        type: section ? "success" : "info",
+        text: section ? `Worklog section loaded for ${parts.dateHeading}.` : `No worklog section found for ${parts.dateHeading}.`
+      });
+    } catch (error) {
+      if (error.status === 404) {
+        setReaderFile(path);
+        setReaderMessage({ type: "info", text: `Worklog file not found or not accessible: ${path}` });
+      } else {
+        setReaderMessage({ type: "error", text: `Could not fetch the worklog: ${error.message}` });
+      }
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function loadBusinessFiles() {
+    setReaderMessage(null);
+    setBusinessFiles([]);
+    setBusinessFile("");
+    if (!hasReaderConnection()) return;
+
+    setBusy(true);
+    try {
+      const files = await githubRequest(contentsEndpoint("data/business"));
+      if (!Array.isArray(files)) throw new Error("The business path is a file, not a folder.");
+      const textFiles = files.filter(item => item.type === "file" && /\.txt$/i.test(item.name));
+      setBusinessFiles(textFiles.map(item => item.name).sort((a, b) => a.localeCompare(b)));
+      setBusinessFile(current => textFiles.some(item => item.name === current) ? current : (textFiles[0]?.name || ""));
+      setReaderMessage({
+        type: "success",
+        text: textFiles.length
+          ? `Found ${textFiles.length} business text file${textFiles.length === 1 ? "" : "s"}. Select a file and press Check to load it.`
+          : "No text files found in data/business."
+      });
+    } catch (error) {
+      setReaderMessage({ type: "error", text: `Could not list business files: ${error.message}` });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function loadBusinessFile() {
+    setReaderMessage(null);
+    setReaderContent("");
+    setReaderFile("");
+    if (!hasReaderConnection()) return;
+    if (!businessFile) {
+      setReaderMessage({ type: "error", text: "Select a business file first." });
+      return;
+    }
+
+    const path = `data/business/${businessFile}`;
+    setBusy(true);
+    try {
+      const content = await fetchFileContent(path);
+      setReaderFile(path);
+      setReaderContent(content);
+      setReaderMessage({ type: "success", text: `Loaded ${businessFile}.` });
+    } catch (error) {
+      setReaderMessage({ type: "error", text: `Could not fetch the business file: ${error.message}` });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function loadTodayTodos() {
+    setReaderMessage(null);
+    setReaderContent("");
+    setReaderFile("");
+    if (!hasReaderConnection()) return;
+
+    const today = todayInIndia();
+    const todoFileName = getTodoFileName(today);
+    const todayPath = `data/todos/${todoFileName}`;
+    const todayDate = new Date(`${today}T00:00:00Z`);
+    const oldestKeptDate = new Date(Date.UTC(todayDate.getUTCFullYear(), todayDate.getUTCMonth(), todayDate.getUTCDate() - 6));
+    setBusy(true);
+
+    try {
+      const directory = await githubRequest(contentsEndpoint("data/todos"));
+      if (!Array.isArray(directory)) throw new Error("The todos path is a file, not a folder.");
+
+      const expiredFiles = directory.filter(item => {
+        if (item.type !== "file") return false;
+        const fileDate = getTodoFileDate(item.name);
+        return fileDate && fileDate < oldestKeptDate;
+      });
+
+      let deletedCount = 0;
+      const deletionErrors = [];
+      for (const file of expiredFiles) {
+        try {
+          await githubRequest(contentsEndpoint(file.path), {
+            method: "DELETE",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              message: `Delete expired todo file ${file.name}`,
+              sha: file.sha,
+              branch: selectedBranch
+            })
+          });
+          deletedCount += 1;
+        } catch (error) {
+          deletionErrors.push(`${file.name}: ${error.message}`);
+        }
+      }
+
+      let content = "";
+      try {
+        content = await fetchFileContent(todayPath);
+      } catch (error) {
+        if (error.status !== 404) throw error;
+      }
+      setReaderFile(todayPath);
+      setReaderContent(content);
+
+      if (deletionErrors.length) {
+        setReaderMessage({
+          type: "error",
+          text: `Loaded today's todos, but cleanup was incomplete (${deletedCount} deleted; ${deletionErrors.join("; ")}).`
+        });
+      } else {
+        setReaderMessage({
+          type: "success",
+          text: content
+            ? `Loaded today's todos. Removed ${deletedCount} expired file${deletedCount === 1 ? "" : "s"}; the latest 7 days are kept.`
+            : `No todo file exists for today yet. Removed ${deletedCount} expired file${deletedCount === 1 ? "" : "s"}; the latest 7 days are kept.`
+        });
+      }
+    } catch (error) {
+      setReaderMessage({ type: "error", text: `Could not load today's todos: ${error.message}` });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function checkFolder() {
+    const folder = searchFolder.trim().replace(/^data[\\/]/i, "").replace(/[\\/]+$/, "").toLowerCase();
+    const category = ["worklogs", "business", "todos"].includes(folder) ? folder : "";
+    setReaderMessage(null);
+    setReaderContent("");
+    setReaderFile("");
+
+    if (!category) {
+      setSearchCategory("");
+      setReaderMessage({ type: "error", text: "Enter one folder name: worklogs, business, or todos." });
+      return;
+    }
+
+    const categoryChanged = category !== searchCategory;
+    setSearchCategory(category);
+    if (categoryChanged) {
+      setBusinessFiles([]);
+      setBusinessFile("");
+    }
+
+    if (category === "worklogs") {
+      await loadWorklogForDate();
+    } else if (category === "todos") {
+      await loadTodayTodos();
+    } else if (categoryChanged || !businessFiles.length) {
+      await loadBusinessFiles();
+    } else {
+      await loadBusinessFile();
+    }
+  }
 
   
   async function githubRequest(path, options = {}) {
@@ -386,19 +648,40 @@ export default function App() {
         <p>Paste Jira links or summaries and update your GitHub text file with the right date section—without duplicate entries.</p>
       </section>
 
-      <section className="workspace">
+      <section className="connection-panel form-panel">
+        <div className="section-heading">
+          <div className="step-number">01</div>
+          <div><h2>Connect your repository</h2><p>These settings are shared by all tabs.</p></div>
+        </div>
+        <label htmlFor="repo">GitHub repository URL</label>
+        <div className="input-with-icon"><Github size={17} /><input id="repo" value={ownerRepo} onChange={e => setOwnerRepo(e.target.value)} placeholder="https://github.com/owner/repository" autoComplete="off" aria-invalid={showUploadValidation && (!owner || !repo)} style={showUploadValidation && (!owner || !repo) ? { borderColor: "#dc2626" } : undefined} /></div>
+        {showUploadValidation && (!owner || !repo) && <span className="invalid-count" role="alert">Enter a valid GitHub repository URL.</span>}
+        <div className="connection-fields">
+          <div>
+            <label htmlFor="branch">Branch</label>
+            <input id="branch" value={branch} onChange={e => setBranch(e.target.value)} placeholder="main" />
+          </div>
+          <div>
+            <label htmlFor="token">GitHub personal access token</label>
+            <div className="token-wrap"><input id="token" type={showToken ? "text" : "password"} value={token} onChange={e => setToken(e.target.value)} placeholder="Paste your GitHub token" autoComplete="off" aria-invalid={showUploadValidation && !token.trim()} style={showUploadValidation && !token.trim() ? { borderColor: "#dc2626" } : undefined} /><button className="icon-button" type="button" onClick={() => setShowToken(v => !v)} aria-label={showToken ? "Hide token" : "Show token"}>{showToken ? <EyeOff size={17} /> : <Eye size={17} />}</button></div>
+            {showUploadValidation && !token.trim() && <span className="invalid-count" role="alert">Enter a GitHub token with repository Contents read/write permission.</span>}
+          </div>
+        </div>
+        <p className="hint">Use a fine-grained token limited to this repository with <b>Contents: Read and write</b>. The token stays in this tab and is not saved by this app.</p>
+      </section>
+
+      <nav className="tab-bar" role="tablist" aria-label="Log tools">
+        <button type="button" role="tab" aria-selected={activeTab === "add"} className={activeTab === "add" ? "active" : ""} onClick={() => setActiveTab("add")} disabled={busy}>Add log</button>
+        <button type="button" role="tab" aria-selected={activeTab === "search"} className={activeTab === "search" ? "active" : ""} onClick={() => setActiveTab("search")} disabled={busy}>Search logs</button>
+      </nav>
+
+      {activeTab === "add" ? <section className="workspace">
         <div className="form-panel">
           <div className="section-heading">
-            <div className="step-number">01</div>
-            <div><h2>Connect your repository</h2><p>Choose where the monthly log should live.</p></div>
+            <div className="step-number">02</div>
+            <div><h2>Choose log type</h2><p>Select where the new entry should be saved.</p></div>
           </div>
-
-          <label htmlFor="repo">GitHub repository URL</label>
-          <div className="input-with-icon"><Github size={17} /><input id="repo" value={ownerRepo} onChange={e => setOwnerRepo(e.target.value)} placeholder="https://github.com/owner/repository" autoComplete="off" aria-invalid={showUploadValidation && (!owner || !repo)} style={showUploadValidation && (!owner || !repo) ? { borderColor: "#dc2626" } : undefined} /></div>
-          {showUploadValidation && (!owner || !repo) && <span className="invalid-count" role="alert">Enter a valid GitHub repository URL.</span>}
-
           <div className="two-col">
-            <div><label htmlFor="branch">Branch</label><input id="branch" value={branch} onChange={e => setBranch(e.target.value)} placeholder="main" /></div>
             <div>
               <label htmlFor="log-type">Log type</label>
               <select id="log-type" value={logType} onChange={e => { setLogType(e.target.value); setShowValidation(false); }}>
@@ -415,17 +698,10 @@ export default function App() {
             {showValidation && validationErrors.filePath && <span className="invalid-count" role="alert">{validationErrors.filePath}</span>}
           </div>
 
-          <div className="token-section">
-            <label htmlFor="token">GitHub personal access token</label>
-            <div className="token-wrap"><input id="token" type={showToken ? "text" : "password"} value={token} onChange={e => setToken(e.target.value)} placeholder="Paste your GitHub token" autoComplete="off" aria-invalid={showUploadValidation && !token.trim()} style={showUploadValidation && !token.trim() ? { borderColor: "#dc2626" } : undefined} /><button className="icon-button" type="button" onClick={() => setShowToken(v => !v)} aria-label={showToken ? "Hide token" : "Show token"}>{showToken ? <EyeOff size={17} /> : <Eye size={17} />}</button></div>
-            {showUploadValidation && !token.trim() && <span className="invalid-count" role="alert">Enter a GitHub token with repository Contents read/write permission.</span>}
-            <p className="hint">Use a fine-grained token limited to this repository with <b>Contents: Read and write</b>. The token stays in this tab and is not saved by this app.</p>
-          </div>
-
           <div className="section-divider" />
 
           <div className="section-heading">
-            <div className="step-number">02</div>
+            <div className="step-number">03</div>
             <div><h2>Add log details</h2><p>Enter the details to include in this log.</p></div>
           </div>
           <label htmlFor="tickets">Jira ticket / summary details</label>
@@ -435,7 +711,7 @@ export default function App() {
 
           <div className="section-divider" />
           <div className="section-heading compact">
-            <div className="step-number">03</div>
+            <div className="step-number">04</div>
             <div><h2>Choose log date</h2><p>Uses India time by default.</p></div>
           </div>
           <div className="date-control"><CalendarDays size={18} /><input type="date" value={date} onChange={e => setDate(e.target.value)} /></div>
@@ -470,7 +746,76 @@ export default function App() {
           {previewMeta && <div className="preview-stats"><div><span>New entries</span><strong>{previewMeta.added.length}</strong></div><div><span>Already logged</span><strong>{previewMeta.duplicates.length}</strong></div></div>}
           <div className="preview-footer"><span className="status-dot" /> Your changes are only committed when you click Save to GitHub.</div>
         </aside>
+      </section> : (
+      <section className="reader-panel form-panel">
+        <div className="section-heading">
+          <div className="step-number">02</div>
+          <div>
+            <h2>Search your data folders</h2>
+            <p>Enter a folder name to load its matching view.</p>
+          </div>
+        </div>
+
+        <div className="folder-search">
+          <label htmlFor="search-folder">Folder name</label>
+          <div className="folder-search-controls">
+            <input id="search-folder" value={searchFolder} onChange={event => {
+              setSearchFolder(event.target.value);
+              setSearchCategory("");
+              setBusinessFiles([]);
+              setBusinessFile("");
+              setReaderContent("");
+              setReaderFile("");
+              setReaderMessage(null);
+            }} onKeyDown={event => { if (event.key === "Enter" && !busy) checkFolder(); }} placeholder="worklogs, business, or todos" />
+            <button type="button" className="primary-button" onClick={checkFolder} disabled={busy}>{busy ? <><LoaderCircle className="spin" size={17} /> Checking…</> : <><Eye size={17} /> Check</>}</button>
+          </div>
+          <p className="hint">You can enter <code>worklogs</code>, <code>business</code>, or <code>todos</code>.</p>
+          <div className="search-path">
+            <strong>Search path</strong>
+            <code>{searchPath || "Enter worklogs, business, or todos"}</code>
+          </div>
+        </div>
+
+        {searchCategory === "worklogs" && (
+          <div className="reader-toolbar">
+            <div>
+              <label htmlFor="worklog-date">Worklog date</label>
+              <div className="date-control"><CalendarDays size={18} /><input id="worklog-date" type="date" value={worklogDate} onChange={event => setWorklogDate(event.target.value)} /></div>
+              <div className="worklog-subfolder-field">
+                <label htmlFor="worklog-folder">Worklogs subfolder <span className="optional">optional</span></label>
+                <input id="worklog-folder" value={worklogFolderPath} onChange={event => setWorklogFolderPath(event.target.value)} placeholder="e.g. team" />
+              </div>
+            </div>
+          </div>
+        )}
+
+        {searchCategory === "business" && businessFiles.length > 0 && (
+          <div className="reader-toolbar">
+            <div>
+              <label htmlFor="business-file">Business text file</label>
+              <select id="business-file" value={businessFile} onChange={event => setBusinessFile(event.target.value)}>
+                <option value="">Select a file</option>
+                {businessFiles.map(file => <option value={file} key={file}>{file}</option>)}
+              </select>
+            </div>
+          </div>
+        )}
+
+        {searchCategory === "todos" && (
+          <div className="todo-retention">
+            <span>File: <code>data/todos/{getTodoFileName(todayInIndia())}</code></span>
+            <span>Automatically keeps the latest 7 days and deletes older dated todo files in <code>data/todos/</code>.</span>
+          </div>
+        )}
+
+        {readerMessage && <div className={`notice ${readerMessage.type}`} role={readerMessage.type === "error" ? "alert" : "status"}>{readerMessage.type === "success" ? <CheckCircle2 size={18} /> : <AlertCircle size={18} />}<div>{readerMessage.text}</div></div>}
+        <div className="reader-result">
+          <div className="preview-file"><FileText size={16} /><span>{readerFile || "Fetched content will appear here"}</span><span className="branch-pill">{selectedBranch}</span></div>
+          <pre>{readerFile ? (readerContent || "No content found for this file.") : "Connect your repository, then fetch content to view it here."}</pre>
+        </div>
       </section>
+      )}
       <footer className="footer"><span>Ticket Log Manager</span><span>React · GitHub Contents API</span></footer>
     </main>
   );

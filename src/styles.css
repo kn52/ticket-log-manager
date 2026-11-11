@@ -438,6 +438,210 @@ html body .footer {
 
 .two-col select{width:100%;border:1px solid #e1e4ed;background:#fcfcfe;border-radius:9px;padding:11px 12px;color:#25293b;font-size:13px;outline:none;transition:border .15s,box-shadow .15s}.two-col select:focus{border-color:#928cf0;box-shadow:0 0 0 3px #7068e51a}
 
+html body .connection-panel {
+  margin-bottom: 18px;
+  padding: 24px 30px;
+}
+
+html body .connection-panel .section-heading {
+  margin-bottom: 17px;
+}
+
+.connection-fields {
+  display: grid;
+  grid-template-columns: minmax(150px, .7fr) minmax(260px, 1.3fr);
+  gap: 18px;
+  margin-top: 16px;
+}
+
+.connection-fields > div {
+  min-width: 0;
+}
+
+.connection-fields > div > input {
+  width: 100%;
+}
+
+.connection-panel .hint {
+  margin: 11px 0 0;
+}
+
+.tab-bar {
+  display: flex;
+  gap: 6px;
+  margin: 0 0 18px;
+  padding: 6px;
+  overflow-x: auto;
+  border: 1px solid #e5e8f0;
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 5px 16px #252a4508;
+}
+
+.tab-bar button {
+  flex: 1 0 auto;
+  min-height: 42px;
+  padding: 9px 16px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: #70778c;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.tab-bar button:hover {
+  background: #f6f5ff;
+  color: #4d45c3;
+}
+
+.tab-bar button.active {
+  background: #f0efff;
+  color: #4d45c3;
+}
+
+html body .reader-panel {
+  padding: 30px;
+}
+
+.folder-search {
+  margin: 22px 0;
+}
+
+.folder-search-controls {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+}
+
+.folder-search-controls .primary-button {
+  min-width: 120px;
+}
+
+.search-path {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  margin-top: 16px;
+  padding: 12px 14px;
+  border: 1px solid #e8e8f3;
+  border-radius: 11px;
+  background: #fafaff;
+}
+
+.search-path strong {
+  color: #555b70;
+  font-size: 11px;
+}
+
+.search-path code {
+  color: #4d45c3;
+  font-family: 'DM Mono', monospace;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.reader-toolbar {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) auto;
+  align-items: end;
+  gap: 16px;
+  margin: 22px 0;
+}
+
+.reader-toolbar > div:first-child {
+  min-width: 0;
+}
+
+.worklog-subfolder-field {
+  margin-top: 20px;
+}
+
+.reader-toolbar select {
+  width: 100%;
+  min-height: 46px;
+  padding: 10px 12px;
+  border: 1px solid #dfe3ed;
+  border-radius: 11px;
+  background: #fbfcff;
+  color: #282d45;
+  font: inherit;
+  font-size: 13px;
+}
+
+.reader-toolbar > button {
+  min-height: 46px;
+  white-space: nowrap;
+}
+
+.todo-retention {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+  margin: 22px 0;
+  padding: 16px;
+  border: 1px solid #e8e8f3;
+  border-radius: 12px;
+  background: #fafaff;
+  color: #697087;
+  font-size: 13px;
+}
+
+.todo-retention code {
+  color: #4d45c3;
+  font-family: 'DM Mono', monospace;
+  font-size: 12px;
+}
+
+.reader-result {
+  margin-top: 20px;
+  overflow: hidden;
+  border: 1px solid #e7e8f1;
+  border-radius: 12px;
+  background: #fcfcff;
+}
+
+.reader-result .preview-file {
+  border: 0;
+  border-bottom: 1px solid #e7e8f1;
+  border-radius: 0;
+}
+
+.reader-result pre {
+  min-height: 180px;
+  max-height: 650px;
+  margin: 0;
+  padding: 18px;
+  overflow: auto;
+  color: #353a52;
+  font-family: 'DM Mono', monospace;
+  font-size: 12px;
+  line-height: 1.8;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+html body .notice.info {
+  border-color: #dce5f7;
+  background: #f4f7ff;
+  color: #475b86;
+}
+
+@media (max-width: 560px) {
+  .connection-fields,
+  .reader-toolbar,
+  .folder-search-controls {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .folder-search-controls .primary-button {
+    width: 100%;
+  }
+}
+
 :root{font-family:'DM Sans',sans-serif;color:#202437;background:#f6f7fb;font-synthesis:none;text-rendering:optimizeLegibility;-webkit-font-smoothing:antialiased}
 *{box-sizing:border-box}body{margin:0;min-width:320px;background:radial-gradient(ellipse at 18% 0%,#eef0ff 0%,transparent 38%),#f6f7fb}
 button,input,textarea{font:inherit}button{cursor:pointer}.app-shell{max-width:1180px;margin:0 auto;padding:26px 30px 24px}.topbar{display:flex;align-items:center;gap:12px;padding:4px 0 24px;border-bottom:1px solid #e5e7ef}.brand-mark{height:42px;width:42px;display:grid;place-items:center;background:#4f46e5;color:white;border-radius:13px;box-shadow:0 7px 16px #4f46e52c}.brand-copy{display:flex;flex-direction:column;gap:3px}.brand-copy strong{font-size:15px;letter-spacing:-.3px}.brand-copy span{font-size:12px;color:#85899c}.top-chip{margin-left:auto;border:1px solid #e0e5e9;background:#fff;border-radius:100px;padding:7px 11px;display:flex;align-items:center;gap:7px;color:#687080;font-size:12px;font-weight:600}.status-dot{display:inline-block;width:7px;height:7px;background:#22b573;border-radius:50%}
