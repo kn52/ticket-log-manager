@@ -121,8 +121,8 @@ export default function App() {
         : "");
 
   const targetPath = logType === "worklogs"
-    ? ["worklogs", yearFolder.trim(), ...folderPathParts, targetFileName].filter(Boolean).join("/")
-    : [...folderPathParts, targetFileName].filter(Boolean).join("/");
+    ? ["data", "worklogs", yearFolder.trim(), ...folderPathParts, targetFileName].filter(Boolean).join("/")
+    : ["data", ...folderPathParts, targetFileName].filter(Boolean).join("/");
 
   const validationErrors = {
     logType: !logType
