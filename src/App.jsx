@@ -30,22 +30,27 @@ function getDateParts(dateString) {
 }
 
 
-function normalizeUrls(raw) {
+function normalizeEntries(raw) {
   const values = raw.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
-  const invalid = values.filter(value => {
-    try {
-      const u = new URL(value);
-      return u.protocol !== "https:" || !/\/browse\/[A-Z][A-Z0-9]+-\d+\/?$/.test(u.pathname);
-    } catch { return true; }
-  });
-  return { urls: [...new Set(values)], invalid };
+  return [...new Set(values)];
 }
 
-function updateLog(existing, dateHeading, urls) {
+function updateLog(existing, dateHeading, entries, logType) {
   // Preserve existing content and the required two blank lines between date sections.
   let content = (existing || "").replace(/\r\n/g, "\n").replace(/\n+$/, "");
+  if (logType === "others") {
+    const existingEntries = new Set(content.split("\n").map(line => line.trim()).filter(Boolean));
+    const additions = entries.filter(entry => !existingEntries.has(entry));
+    if (additions.length === 0) return { content, added: [], duplicates: entries };
+    return {
+      content: content ? `${content}\n${additions.join("\n")}` : additions.join("\n"),
+      added: additions,
+      duplicates: entries.filter(entry => existingEntries.has(entry))
+    };
+  }
+
   if (!content) {
-    return `${dateHeading}\n++++++++\n${urls.join("\n")}`;
+    return `${dateHeading}\n++++++++\n${entries.join("\n")}`;
   }
 
   const lines = content.split("\n");
@@ -59,18 +64,18 @@ function updateLog(existing, dateHeading, urls) {
       }
     }
     const section = lines.slice(dateIndex, end);
-    const existingUrls = new Set(section.filter(line => /^https:\/\/\S+$/.test(line.trim())).map(line => line.trim()));
-    const additions = urls.filter(url => !existingUrls.has(url));
-    if (additions.length === 0) return { content, added: [], duplicates: urls };
-    // Insert new URLs at the end of this date section, before any separating blank lines.
+    const existingEntries = new Set(section.map(line => line.trim()).filter(line => line && line !== dateHeading && line !== "++++++++"));
+    const additions = entries.filter(entry => !existingEntries.has(entry));
+    if (additions.length === 0) return { content, added: [], duplicates: entries };
+    // Insert new entries at the end of this date section, before any separating blank lines.
     while (section.length && section[section.length - 1].trim() === "") section.pop();
     section.push(...additions);
     lines.splice(dateIndex, end - dateIndex, ...section);
     content = lines.join("\n").replace(/\n+$/, "");
-    return { content, added: additions, duplicates: urls.filter(url => existingUrls.has(url)) };
+    return { content, added: additions, duplicates: entries.filter(entry => existingEntries.has(entry)) };
   }
 
-  return { content: `${content}\n\n\n${dateHeading}\n++++++++\n${urls.join("\n")}`, added: urls, duplicates: [] };
+  return { content: `${content}\n\n\n${dateHeading}\n++++++++\n${entries.join("\n")}`, added: entries, duplicates: [] };
 }
 
 function decodeContent(encoded) {
@@ -103,7 +108,7 @@ export default function App() {
   const [previewMeta, setPreviewMeta] = useState(null);
   const [showValidation, setShowValidation] = useState(false);
 
-  const { urls, invalid } = useMemo(() => normalizeUrls(ticketInput), [ticketInput]);
+  const entries = useMemo(() => normalizeEntries(ticketInput), [ticketInput]);
   const dateParts = useMemo(() => getDateParts(date), [date]);
   const folderPathParts = filePath.trim().split(/[\\/]+/).filter(Boolean);
   const targetFileName = logType === "worklogs"
@@ -186,12 +191,12 @@ export default function App() {
       } catch (error) {
         if (!String(error.message).includes("Not Found") && !String(error.message).includes("404")) throw error;
       }
-      const result = updateLog(existing, dateParts.dateHeading, urls);
+      const result = updateLog(existing, dateParts.dateHeading, entries, logType);
       const nextContent = typeof result === "string" ? result : result.content;
       setPreviewContent(nextContent);
-      setPreviewMeta({ exists: Boolean(existing), added: result.added ?? urls, duplicates: result.duplicates ?? [], count: urls.length });
+      setPreviewMeta({ exists: Boolean(existing), added: result.added ?? entries, duplicates: result.duplicates ?? [], count: entries.length });
       setPreviewOpen(true);
-      setMessage({ type: "success", text: existing ? "Existing file loaded and preview prepared." : "Monthly file does not exist yet; a new file will be created." });
+      setMessage({ type: "success", text: existing ? "Existing file loaded and preview prepared." : "File does not exist yet; a new file will be created." });
     } catch (error) {
       setMessage({ type: "error", text: error.message });
     } finally {
@@ -225,18 +230,10 @@ export default function App() {
       return;
     }
   
-    if (!urls.length) {
+    if (!entries.length) {
       setMessage({
         type: "error",
-        text: "Enter at least one Jira ticket URL."
-      });
-      return;
-    }
-  
-    if (invalid.length) {
-      setMessage({
-        type: "error",
-        text: `These are not valid Jira browse URLs: ${invalid.join(", ")}`
+        text: "Enter at least one Jira ticket or summary detail."
       });
       return;
     }
@@ -279,11 +276,12 @@ export default function App() {
         sha = undefined;
       }
   
-      // Add today's section or append only new URLs to an existing section.
+      // Add today's section or append only new entries to an existing section.
       const result = updateLog(
         existing,
         dateParts.dateHeading,
-        urls
+        entries,
+        logType
       );
   
       const content = typeof result === "string"
@@ -296,14 +294,14 @@ export default function App() {
         setPreviewMeta({
           exists: true,
           added: [],
-          duplicates: urls,
-          count: urls.length
+          duplicates: entries,
+          count: entries.length
         });
   
         setPreviewOpen(true);
         setMessage({
           type: "success",
-          text: "No changes needed: all submitted URLs are already logged for this date."
+          text: "No changes needed: all submitted entries are already in the file."
         });
   
         return;
@@ -337,9 +335,9 @@ export default function App() {
   
       setPreviewMeta({
         exists: Boolean(sha),
-        added: result.added ?? urls,
+        added: result.added ?? entries,
         duplicates: result.duplicates ?? [],
-        count: urls.length
+        count: entries.length
       });
   
       setPreviewOpen(true);
@@ -376,7 +374,7 @@ export default function App() {
       <section className="hero">
         <div className="eyebrow"><span className="eyebrow-line" /> WORKFLOW AUTOMATION</div>
         <h1>Logs.<br /><span>Skip the manual work.</span></h1>
-        <p>Paste ticket links and update your GitHub text file with the right date section—without duplicate entries.</p>
+        <p>Paste Jira links or summaries and update your GitHub text file with the right date section—without duplicate entries.</p>
       </section>
 
       <section className="workspace">
@@ -419,9 +417,9 @@ export default function App() {
             <div className="step-number">02</div>
             <div><h2>Add log details</h2><p>Enter the details to include in this log.</p></div>
           </div>
-          <label htmlFor="tickets">Jira ticket URLs/Details</label>
-          <textarea id="tickets" rows={5} value={ticketInput} onChange={e => setTicketInput(e.target.value)} placeholder={"Paste one Jira URL per line, for example:\nhttps://your-domain.atlassian.net/browse/PROJ-123"} />
-          <div className="input-footer"><span>{urls.length} unique {urls.length === 1 ? "ticket" : "tickets"}</span>{invalid.length > 0 && <span className="invalid-count">{invalid.length} invalid URL(s)</span>}</div>
+          <label htmlFor="tickets">Jira ticket / summary details</label>
+          <textarea id="tickets" rows={5} value={ticketInput} onChange={e => setTicketInput(e.target.value)} placeholder={"Enter a Jira URL or a summary, for example:\nhttps://your-domain.atlassian.net/browse/PROJ-123\nInvestigated the issue and updated the workflow"} />
+          <div className="input-footer"><span>{entries.length} unique {entries.length === 1 ? "entry" : "entries"}</span></div>
 
           <div className="section-divider" />
           <div className="section-heading compact">
@@ -446,8 +444,8 @@ export default function App() {
           {message && <div className={`notice ${message.type}`} role="status">{message.type === "success" ? <CheckCircle2 size={18} /> : <AlertCircle size={18} />}<div>{message.text}{message.url && <a href={message.url} target="_blank" rel="noreferrer">Open on GitHub <ExternalLink size={13} /></a>}</div></div>}
 
           <div className="actions">
-            <button className="secondary-button" onClick={loadPreview} disabled={busy || !urls.length}><Eye size={17} /> Preview update</button>
-            <button className="primary-button" onClick={saveToGithub} disabled={busy || !urls.length}>{busy ? <><LoaderCircle className="spin" size={17} /> Working…</> : <><Github size={17} /> Save to GitHub</>}</button>
+            <button className="secondary-button" onClick={loadPreview} disabled={busy || !entries.length}><Eye size={17} /> Preview update</button>
+            <button className="primary-button" onClick={saveToGithub} disabled={busy || !entries.length}>{busy ? <><LoaderCircle className="spin" size={17} /> Working…</> : <><Github size={17} /> Save to GitHub</>}</button>
           </div>
           <p className="security-note"><AlertCircle size={14} /> Review the preview before saving. Saving creates a commit on the selected branch.</p>
         </div>
@@ -455,8 +453,8 @@ export default function App() {
         <aside className="preview-panel">
           <div className="preview-header"><div><span className="preview-kicker">LIVE PREVIEW</span><h2>Detailed log</h2></div><button className="icon-button" onClick={() => setPreviewOpen(v => !v)} aria-label="Toggle preview">{previewOpen ? <EyeOff size={17} /> : <Eye size={17} />}</button></div>
           <div className="preview-file"><FileText size={16} /><span>{targetFileName || "Select a log type"}</span><span className="branch-pill">{branch.trim() || "main"}</span></div>
-          {previewOpen && <div className="code-preview">{previewContent ? previewContent.split("\n").map((line, index) => <div className={`code-line ${/^\d{2}-[A-Z][a-z]{2}-\d{4}$/.test(line) ? "date-line" : line === "++++++++" ? "separator-line" : line.startsWith("https://") ? "url-line" : ""}`} key={`${index}-${line}`}>{line || "\u00a0"}</div>) : <div className="empty-preview"><div className="empty-icon"><Link2 size={22} /></div><strong>Your log preview appears here</strong><span>Enter your repository and tickets, then choose Preview update.</span></div>}</div>}
-          <div className="rules-card"><strong><CheckCircle2 size={16} /> Formatting rules</strong><ul><li>Date heading: <code>dd-MMM-yyyy</code></li><li>Section divider: <code>++++++++</code></li><li>Exactly two blank lines between date sections</li><li>Ticket URLs listed once per date</li><li>Creates the monthly file if missing</li></ul></div>
+          {previewOpen && <div className="code-preview">{previewContent ? previewContent.split("\n").map((line, index) => <div className={`code-line ${/^\d{2}-[A-Z][a-z]{2}-\d{4}$/.test(line) ? "date-line" : line === "++++++++" ? "separator-line" : line.startsWith("https://") ? "url-line" : ""}`} key={`${index}-${line}`}>{line || "\u00a0"}</div>) : <div className="empty-preview"><div className="empty-icon"><Link2 size={22} /></div><strong>Your log preview appears here</strong><span>Enter your repository and details, then choose Preview update.</span></div>}</div>}
+          <div className="rules-card"><strong><CheckCircle2 size={16} /> Formatting rules</strong><ul><li>Date heading: <code>dd-MMM-yyyy</code></li><li>Section divider: <code>++++++++</code></li><li>Exactly two blank lines between date sections</li><li>Entries listed once per date</li><li>Creates the monthly file if missing</li></ul></div>
           {previewMeta && <div className="preview-stats"><div><span>New links</span><strong>{previewMeta.added.length}</strong></div><div><span>Already logged</span><strong>{previewMeta.duplicates.length}</strong></div></div>}
           <div className="preview-footer"><span className="status-dot" /> Your changes are only committed when you click Save to GitHub.</div>
         </aside>

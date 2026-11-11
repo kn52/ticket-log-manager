@@ -18,6 +18,7 @@ A React + Vite app that updates a monthly plain-text log in GitHub from Jira tic
 - Uses exactly two blank lines between date sections.
 - Adds links to an existing date section or creates a new section.
 - Skips duplicate URLs in the same date section.
+- For the “Others” log type, writes summary entries directly to the selected file without a date heading, appending only entries that are not already present.
 - Defaults the date using the `Asia/Kolkata` timezone.
 - Preview before saving; saving creates a commit on the selected branch.
 
