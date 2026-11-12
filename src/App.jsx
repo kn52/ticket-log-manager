@@ -297,13 +297,6 @@ export default function App() {
     setSearchCopyMessage("");
   }
 
-  function clearPreview() {
-    setPreviewContent("");
-    setPreviewMeta(null);
-    setCopyMessage("");
-    setPreviewOpen(true);
-  }
-
   const validationErrors = {
     logType: !logType
       ? "Select a log type."
@@ -863,7 +856,7 @@ export default function App() {
         <div className="connection-fields">
           <div>
             <label htmlFor="branch">Branch</label>
-            <ClearableField value={branch} onClear={() => setBranch("")}><input id="branch" value={branch} onChange={e => setBranch(e.target.value)} placeholder="main" /></ClearableField>
+            <input id="branch" value={branch} onChange={e => setBranch(e.target.value)} placeholder="main" />
           </div>
           <div>
             <label htmlFor="token">GitHub personal access token</label>
@@ -949,7 +942,7 @@ export default function App() {
         </div>
 
         <aside className="preview-panel">
-          <div className="preview-header"><div><span className="preview-kicker">LIVE PREVIEW</span><h2>Detailed log</h2></div><div><button type="button" className="icon-button" onClick={copyPreview} aria-label="Copy preview" title="Copy preview" disabled={!previewContent}><Copy size={17} /></button><button type="button" className="icon-button" onClick={clearPreview} aria-label="Clear preview" title="Clear preview" disabled={!previewContent && !previewMeta}><Eraser size={17} /></button><button type="button" className="icon-button" onClick={() => setPreviewOpen(v => !v)} aria-label="Toggle preview">{previewOpen ? <EyeOff size={17} /> : <Eye size={17} />}</button></div></div>
+          <div className="preview-header"><div><span className="preview-kicker">LIVE PREVIEW</span><h2>Detailed log</h2></div><div><button type="button" className="icon-button" onClick={copyPreview} aria-label="Copy preview" title="Copy preview" disabled={!previewContent}><Copy size={17} /></button><button type="button" className="icon-button" onClick={() => setPreviewOpen(v => !v)} aria-label="Toggle preview">{previewOpen ? <EyeOff size={17} /> : <Eye size={17} />}</button></div></div>
           {copyMessage && <div className={`copy-feedback ${copyMessage.startsWith("Could not") ? "error" : ""}`} role="status">{copyMessage}</div>}
           <div className="preview-file"><FileText size={16} /><span>{targetFileName || "Select a log type"}</span><span className="branch-pill">{branch.trim() || "main"}</span></div>
           {previewOpen && <div className="code-preview">{previewContent ? previewContent.split("\n").map((line, index) => <div className={`code-line ${/^\d{2}-[A-Z][a-z]{2}-\d{4}$/.test(line) ? "date-line" : line === "++++++++" ? "separator-line" : line.startsWith("https://") ? "url-line" : ""}`} key={`${index}-${line}`}>{line || "\u00a0"}</div>) : <div className="empty-preview"><div className="empty-icon"><Link2 size={22} /></div><strong>Your log preview appears here</strong><span>Enter your repository and details, then choose Preview update.</span></div>}</div>}

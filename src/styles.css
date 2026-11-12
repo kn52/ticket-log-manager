@@ -223,6 +223,14 @@ html body .file-options {
   margin-top: 17px;
 }
 
+html body .file-options .clearable-field {
+  margin-bottom: 17px;
+}
+
+html body .file-options .clearable-field > input {
+  margin-bottom: 0;
+}
+
 html body .token-section {
   margin-top: 24px;
 }
