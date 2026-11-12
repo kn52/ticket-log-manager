@@ -29,18 +29,21 @@ function getDateParts(dateString) {
   };
 }
 
-function getTodoFileName(dateString) {
-  const { dateHeading } = getDateParts(dateString);
-  const [day, month, year] = dateHeading.split("-");
-  return `${day}-${month.toUpperCase()}-${year}.txt`;
+function ensureTxtExtension(fileName) {
+  return /\.txt$/i.test(fileName) ? fileName : `${fileName}.txt`;
+}
+
+function getTodoTaskFileName(dateString, name = "") {
+  const prefix = name.trim().replace(/\.txt$/i, "").replace(/[^a-zA-Z0-9_-]+/g, "-").replace(/^-+|-+$/g, "");
+  return `${prefix ? `${prefix}__` : ""}${getDateParts(dateString).dateHeading}-todo-task.txt`;
 }
 
 function getTodoFileDate(fileName) {
-  const match = fileName.match(/^(\d{2})-([A-Z]{3})-(\d{4})\.txt$/);
+  const match = fileName.match(/^(?:.+[_-])?(\d{2})-([A-Z]{3})-(\d{4})(?:-todo-task)?\.txt$/i);
   if (!match) return null;
 
   const months = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
-  const month = months.indexOf(match[2]);
+  const month = months.indexOf(match[2].toUpperCase());
   if (month < 0) return null;
 
   const date = new Date(Date.UTC(Number(match[3]), month, Number(match[1])));
@@ -99,7 +102,7 @@ function updateLog(existing, dateHeading, entries, logType) {
   let content = (existing || "").replace(/\r\n/g, "\n").replace(/\n+$/, "");
   if (!entries.length) return { content, added: [], duplicates: [] };
 
-  if (logType === "others") {
+  if (logType === "others" || logType === "todos") {
     const existingEntries = new Set(content.split("\n").map(line => line.trim()).filter(Boolean));
     const additions = entries.filter(entry => !existingEntries.has(entry));
     if (additions.length === 0) return { content, added: [], duplicates: entries };
@@ -191,14 +194,18 @@ export default function App() {
   const dateParts = useMemo(() => getDateParts(date || todayInIndia()), [date]);
   const folderPathParts = filePath.trim().split(/[\\/]+/).filter(Boolean);
   const targetFileName = logType === "worklogs"
-    ? (customFileName.trim() || dateParts.fileName)
-    : (customFileName.trim()
+    ? ensureTxtExtension(customFileName.trim() || dateParts.fileName)
+    : logType === "todos"
+      ? getTodoTaskFileName(date || todayInIndia(), customFileName)
+      : (customFileName.trim()
         ? `${customFileName.trim().replace(/\.txt$/i, "")}${yearFolder.trim() ? `-${yearFolder.trim()}` : ""}.txt`
         : "");
 
-  const targetPath = logType === "worklogs"
-    ? ["data", "worklogs", yearFolder.trim(), ...folderPathParts, targetFileName].filter(Boolean).join("/")
-    : ["data", ...folderPathParts, targetFileName].filter(Boolean).join("/");
+  const targetPath = logType === "todos"
+    ? ["data", "todos", targetFileName].join("/")
+    : logType === "worklogs"
+      ? ["data", "worklogs", yearFolder.trim(), ...folderPathParts, targetFileName].filter(Boolean).join("/")
+      : ["data", ...folderPathParts, targetFileName].filter(Boolean).join("/");
   const searchPathFolder = searchFolder.trim().replace(/^data[\\/]/i, "").replace(/[\\/]+$/, "").toLowerCase();
   const searchPathCategory = ["worklogs", "business", "todos"].includes(searchPathFolder) ? searchPathFolder : "";
   const searchPath = searchPathCategory === "worklogs"
@@ -212,7 +219,7 @@ export default function App() {
     : searchPathCategory === "business"
       ? "data/business"
       : searchPathCategory === "todos"
-        ? `data/todos/${getTodoFileName(todayInIndia())}`
+        ? `data/todos/*${getDateParts(todayInIndia()).dateHeading}-todo-task.txt`
         : "";
 
   function resetLogForms() {
@@ -303,7 +310,7 @@ export default function App() {
       : "",
     yearFolder: logType === "worklogs" && !yearFolder.trim()
       ? "Year is required for Worklogs."
-      : yearFolder.trim() && !/^\d{4}$/.test(yearFolder.trim())
+      : logType !== "todos" && yearFolder.trim() && !/^\d{4}$/.test(yearFolder.trim())
         ? "Enter a valid 4-digit year."
         : "",
     filePath: logType === "others" && !filePath.trim()
@@ -496,10 +503,8 @@ export default function App() {
     if (!hasReaderConnection()) return;
 
     const today = todayInIndia();
-    const todoFileName = getTodoFileName(today);
-    const todayPath = `data/todos/${todoFileName}`;
     const todayDate = new Date(`${today}T00:00:00Z`);
-    const oldestKeptDate = new Date(Date.UTC(todayDate.getUTCFullYear(), todayDate.getUTCMonth(), todayDate.getUTCDate() - 6));
+    const oldestKeptDate = new Date(Date.UTC(todayDate.getUTCFullYear(), todayDate.getUTCMonth(), todayDate.getUTCDate() - 7));
     setBusy(true);
 
     try {
@@ -531,32 +536,32 @@ export default function App() {
         }
       }
 
-      let content = "";
-      try {
-        content = await fetchFileContent(todayPath);
-      } catch (error) {
-        if (error.status !== 404) throw error;
-      }
-      const result = searchFileContent(todayPath, content, query);
-      setReaderFile(todayPath);
-      setReaderContent(result.content);
-      setReaderResults([{ path: todayPath, content: result.content }]);
+      const todayFiles = directory.filter(item => {
+        if (item.type !== "file") return false;
+        const fileDate = getTodoFileDate(item.name);
+        return fileDate && fileDate.getTime() === todayDate.getTime();
+      });
+      const results = (await Promise.all(todayFiles.map(async file => {
+        const content = await fetchFileContent(file.path);
+        const result = searchFileContent(file.path, content, query);
+        return result.matched ? { path: file.path, content: result.content } : null;
+      }))).filter(Boolean);
+      setReaderResults(results);
+      setReaderFile(results[0]?.path || "");
+      setReaderContent(results[0]?.content || "");
 
       if (deletionErrors.length) {
         setReaderMessage({
           type: "error",
-          text: `Loaded today's todos, but cleanup was incomplete (${deletedCount} deleted; ${deletionErrors.join("; ")}).`
+          text: `Loaded ${results.length} matching todo file${results.length === 1 ? "" : "s"} for today, but cleanup was incomplete (${deletedCount} deleted; ${deletionErrors.join("; ")}).`
         });
       } else {
         setReaderMessage({
-          type: query.trim() && !result.matched ? "info" : "success",
-          text: query.trim()
-            ? result.matched
-              ? `Found ${result.matchCount} matching ${result.matchCount === 1 ? "line or filename" : "lines"} in today's todos. Removed ${deletedCount} expired file${deletedCount === 1 ? "" : "s"}; the latest 7 days are kept.`
-              : `No matches found in today's todos. Removed ${deletedCount} expired file${deletedCount === 1 ? "" : "s"}; the latest 7 days are kept.`
-            : content
-              ? `Loaded today's todos. Removed ${deletedCount} expired file${deletedCount === 1 ? "" : "s"}; the latest 7 days are kept.`
-              : `No todo file exists for today yet. Removed ${deletedCount} expired file${deletedCount === 1 ? "" : "s"}; the latest 7 days are kept.`
+          type: results.length ? "success" : "info",
+          text: `${results.length
+            ? `Found ${results.length} matching todo file${results.length === 1 ? "" : "s"} for today.`
+            : todayFiles.length ? "No todo files for today match that search." : "No todo files exist for today yet."
+          } Removed ${deletedCount} dated file${deletedCount === 1 ? "" : "s"} more than 7 days old.`
         });
       }
     } catch (error) {
@@ -890,16 +895,19 @@ export default function App() {
               <select id="log-type" value={logType} onChange={e => { setLogType(e.target.value); setShowValidation(false); }}>
                 <option value="" disabled>Select log type</option>
                 <option value="worklogs">Worklogs</option>
+                <option value="todos">Todos</option>
                 <option value="others">Others</option>
               </select>
               {showValidation && validationErrors.logType && <span className="invalid-count" role="alert">{validationErrors.logType}</span>}
             </div>
           </div>
-          <div className="path-section">
-            <label htmlFor="path">Folder path <span className="optional">{logType === "worklogs" ? "optional" : "required"}</span></label>
-            <ClearableField value={filePath} onClear={() => setFilePath("")}><input id="path" value={filePath} onChange={e => setFilePath(e.target.value)} placeholder={logType === "worklogs" ? "Optional, e.g. project" : "Required, e.g. project"} aria-invalid={showValidation && Boolean(validationErrors.filePath)} style={showValidation && validationErrors.filePath ? { borderColor: "#dc2626" } : undefined} /></ClearableField>
-            {showValidation && validationErrors.filePath && <span className="invalid-count" role="alert">{validationErrors.filePath}</span>}
-          </div>
+          {logType === "todos"
+            ? <p className="hint">Todos are saved directly in <code>data/todos/</code> as <code>[optional-name__]DD-MMM-YYYY-todo-task.txt</code>.</p>
+            : <div className="path-section">
+              <label htmlFor="path">Folder path <span className="optional">{logType === "worklogs" ? "optional" : "required"}</span></label>
+              <ClearableField value={filePath} onClear={() => setFilePath("")}><input id="path" value={filePath} onChange={e => setFilePath(e.target.value)} placeholder={logType === "worklogs" ? "Optional, e.g. project" : "Required, e.g. project"} aria-invalid={showValidation && Boolean(validationErrors.filePath)} style={showValidation && validationErrors.filePath ? { borderColor: "#dc2626" } : undefined} /></ClearableField>
+              {showValidation && validationErrors.filePath && <span className="invalid-count" role="alert">{validationErrors.filePath}</span>}
+            </div>}
 
           <div className="section-divider" />
 
@@ -919,14 +927,14 @@ export default function App() {
           </div>
           <div className="date-control"><CalendarDays size={18} /><ClearableField value={date} onClear={() => setDate("")}><input type="date" value={date} onChange={e => setDate(e.target.value)} /></ClearableField></div>
           <div className="two-col file-options">
-            <div>
+            {logType !== "todos" && <div>
               <label htmlFor="year-folder">Year <span className="optional">{logType === "worklogs" ? "required" : "optional"}</span></label>
               <ClearableField value={yearFolder} onClear={() => setYearFolder("")}><input id="year-folder" type="text" value={yearFolder} onChange={e => setYearFolder(e.target.value)} placeholder="e.g. 2026" aria-invalid={showValidation && Boolean(validationErrors.yearFolder)} style={showValidation && validationErrors.yearFolder ? { borderColor: "#dc2626" } : undefined} /></ClearableField>
               {showValidation && validationErrors.yearFolder && <span className="invalid-count" role="alert">{validationErrors.yearFolder}</span>}
-            </div>
+            </div>}
             <div>
-              <label htmlFor="file-name">File name <span className="optional">{logType === "worklogs" ? "optional" : "required"}</span></label>
-              <ClearableField value={customFileName} onClear={() => setCustomFileName("")}><input id="file-name" value={customFileName} onChange={e => setCustomFileName(e.target.value)} placeholder={logType === "worklogs" ? dateParts.fileName : "Enter file name"} aria-invalid={showValidation && Boolean(validationErrors.customFileName)} style={showValidation && validationErrors.customFileName ? { borderColor: "#dc2626" } : undefined} /></ClearableField>
+              <label htmlFor="file-name">{logType === "todos" ? "Name / ID" : "File name"} <span className="optional">{logType === "worklogs" || logType === "todos" ? "optional" : "required"}</span></label>
+              <ClearableField value={customFileName} onClear={() => setCustomFileName("")}><input id="file-name" value={customFileName} onChange={e => setCustomFileName(e.target.value)} placeholder={logType === "worklogs" ? dateParts.fileName : logType === "todos" ? "Optional name or ID prefix" : "Enter file name"} aria-invalid={showValidation && Boolean(validationErrors.customFileName)} style={showValidation && validationErrors.customFileName ? { borderColor: "#dc2626" } : undefined} /></ClearableField>
               {showValidation && validationErrors.customFileName && <span className="invalid-count" role="alert">{validationErrors.customFileName}</span>}
             </div>
           </div>
@@ -1021,8 +1029,8 @@ export default function App() {
 
         {searchCategory === "todos" && (
           <div className="todo-retention">
-            <span>File: <code>data/todos/{getTodoFileName(todayInIndia())}</code></span>
-            <span>Automatically keeps the latest 7 days and deletes older dated todo files in <code>data/todos/</code>.</span>
+              <span>Files: <code>data/todos/*{getDateParts(todayInIndia()).dateHeading}-todo-task.txt</code></span>
+              <span>Deletes dated todo files more than 7 days old; other files are left untouched.</span>
           </div>
         )}
 

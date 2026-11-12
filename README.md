@@ -7,13 +7,14 @@ A React + Vite app that updates a monthly plain-text log in GitHub from Jira tic
 - Shared repository settings with an Add log tab and a Search folders tab for Worklogs, Business files, and today's Todos.
 - Enter the GitHub repository as `owner/repository` (for example, `kn52/ticket-log-manager`); a leading or trailing slash is optional, and full GitHub URLs are also accepted.
 - In Search folders, enter `worklogs`, `business`, or `todos` (or `data/` followed by the folder name), optionally enter text or a file name, and select **Search**. Searches match file names and log contents, and matching files appear as separate previews. Worklogs can be filtered by an optional date and subfolder; leaving the date blank searches across all years, and leaving the search text blank loads all files that match the other filters.
-- Daily todo files use `data/todos/DD-MMM-YYYY.txt` with an uppercase month (for example, `data/todos/11-NOV-2026.txt`).
-- Searching the `todos` folder automatically deletes only dated todo files older than the latest 7 days. Other files and the Business and Worklogs folders are not affected.
+- The Todos log type saves plain-text task entries under `data/todos/` as `[optional-name-or-ID__]DD-MMM-YYYY-todo-task.txt` (for example, `12-Nov-2026-todo-task.txt` or `ABC__12-Nov-2026-todo-task.txt`).
+- Searching the `todos` folder shows matching files dated today and deletes only dated todo files more than 7 days old. Undated files and the Business and Worklogs folders are not affected.
 - Reads the selected file from GitHub, or creates it and any missing parent folders if it does not exist.
-- Default file naming: `line-MMM-yyyy-logs.txt` (for example, `line-Nov-2026-logs.txt`).
+- Default file naming: `line-MMM-yyyy-logs.txt` (for example, `line-Nov-2026-logs.txt`). Custom Worklogs filenames also get a `.txt` extension if one is omitted.
 - Data folders are grouped under `data/`, including `data/business/`, `data/todos/`, and `data/worklogs/`.
 - Worklogs target path: `data/worklogs/[year folder/][optional folder path/]filename`. For example, year `2026` and folder path `team` produce `data/worklogs/2026/team/line-Nov-2026-logs.txt`.
 - Others target path: `data/[folder path/]filename`. For example, folder path `todos` produces a file under `data/todos/`.
+- Todos target path: `data/todos/[optional-name-or-ID__]DD-MMM-YYYY-todo-task.txt`. The name or ID is optional and is separated from the date with two underscores.
 - The year folder and custom file name are optional. Without a custom name, the app uses the default name based on the selected log date.
 - Date heading format: `dd-MMM-yyyy` (for example, `27-Oct-2026`).
 - Section format:
