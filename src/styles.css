@@ -351,6 +351,27 @@ html body .preview-header h2 {
   color: #292d45;
 }
 
+html body .preview-header > div:last-child {
+  display: flex;
+  gap: 4px;
+}
+
+html body .preview-header .icon-button:disabled {
+  cursor: not-allowed;
+  opacity: .45;
+}
+
+html body .copy-feedback {
+  margin: -8px 0 12px;
+  color: #24764c;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+html body .copy-feedback.error {
+  color: #a53838;
+}
+
 html body .preview-file {
   min-height: 45px;
   border-color: #e7e8f1;
@@ -360,6 +381,39 @@ html body .preview-file {
 html body .preview-file > span:first-of-type {
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+html body .reader-result-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 2px;
+  padding: 10px 12px 0;
+}
+
+html body .reader-result-select {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+  padding: 12px 12px 0;
+}
+
+html body .reader-result-select label {
+  margin: 0;
+}
+
+html body .reader-result-select select {
+  min-width: 0;
+  padding: 9px 10px;
+  border: 1px solid #e1e4ed;
+  border-radius: 8px;
+  background: #fff;
+  color: #43465d;
+  font-size: 12px;
+}
+
+html body .reader-result-card + .reader-result-card {
+  border-top: 1px solid #e7e8f1;
 }
 
 html body .code-preview {

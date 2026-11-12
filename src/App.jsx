@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from "react";
-import { Github, FileText, Link2, CalendarDays, CheckCircle2, AlertCircle, Eye, EyeOff, LoaderCircle, ExternalLink, Search, RotateCcw, Eraser } from "lucide-react";
+import { Github, FileText, Link2, CalendarDays, CheckCircle2, AlertCircle, Eye, EyeOff, LoaderCircle, ExternalLink, Search, RotateCcw, Eraser, Copy } from "lucide-react";
 
 const API = "https://api.github.com";
 const todayInIndia = () => new Intl.DateTimeFormat("en-CA", {
@@ -161,16 +161,18 @@ export default function App() {
   const [showValidation, setShowValidation] = useState(false);
   const [showUploadValidation, setShowUploadValidation] = useState(false);
   const [activeTab, setActiveTab] = useState("add");
+  const [workspaceOpen, setWorkspaceOpen] = useState(false);
+  const [copyMessage, setCopyMessage] = useState("");
   const [searchFolder, setSearchFolder] = useState("");
   const [searchText, setSearchText] = useState("");
   const [searchCategory, setSearchCategory] = useState("");
-  const [worklogDate, setWorklogDate] = useState(todayInIndia());
+  const [worklogDate, setWorklogDate] = useState("");
   const [worklogFolderPath, setWorklogFolderPath] = useState("");
-  const [businessFiles, setBusinessFiles] = useState([]);
-  const [businessFile, setBusinessFile] = useState("");
+  const [readerResults, setReaderResults] = useState([]);
   const [readerContent, setReaderContent] = useState("");
   const [readerFile, setReaderFile] = useState("");
   const [readerMessage, setReaderMessage] = useState(null);
+  const [searchCopyMessage, setSearchCopyMessage] = useState("");
 
   const entries = useMemo(() => normalizeEntries(ticketInput), [ticketInput]);
   const dateParts = useMemo(() => getDateParts(date), [date]);
@@ -187,19 +189,22 @@ export default function App() {
   const searchPathFolder = searchFolder.trim().replace(/^data[\\/]/i, "").replace(/[\\/]+$/, "").toLowerCase();
   const searchPathCategory = ["worklogs", "business", "todos"].includes(searchPathFolder) ? searchPathFolder : "";
   const searchPath = searchPathCategory === "worklogs"
-    ? (() => {
+    ? worklogDate
+      ? (() => {
         const parts = getDateParts(worklogDate);
         const subfolders = worklogFolderPath.trim().split(/[\\/]+/).filter(Boolean);
-        return ["data", "worklogs", String(parts.year), ...subfolders, parts.fileName].join("/");
+        return ["data", "worklogs", String(parts.year), ...subfolders].join("/") + ` — ${parts.dateHeading}`;
       })()
+      : `data/worklogs${worklogFolderPath.trim() ? ` (all years) / ${worklogFolderPath.trim()}` : " (all years)"}`
     : searchPathCategory === "business"
-      ? ["data", "business", businessFile].filter(Boolean).join("/")
+      ? "data/business"
       : searchPathCategory === "todos"
         ? `data/todos/${getTodoFileName(todayInIndia())}`
         : "";
 
   function resetLogForms() {
     const today = todayInIndia();
+    setCopyMessage("");
     setLogType("");
     setFilePath("");
     setYearFolder("");
@@ -215,13 +220,13 @@ export default function App() {
     setSearchFolder("");
     setSearchText("");
     setSearchCategory("");
-    setWorklogDate(today);
+    setWorklogDate("");
     setWorklogFolderPath("");
-    setBusinessFiles([]);
-    setBusinessFile("");
     setReaderContent("");
     setReaderFile("");
+    setReaderResults([]);
     setReaderMessage(null);
+    setSearchCopyMessage("");
   }
 
   function resetAll() {
@@ -231,6 +236,56 @@ export default function App() {
     setToken("");
     setShowToken(false);
     setActiveTab("add");
+    setWorkspaceOpen(false);
+  }
+
+  function openWorkspace() {
+    setShowUploadValidation(true);
+    if (!owner || !repo || !token.trim()) return;
+    setWorkspaceOpen(true);
+  }
+
+  async function copyPreview() {
+    if (!previewContent) return;
+    try {
+      await navigator.clipboard.writeText(previewContent);
+      setCopyMessage("Preview copied to clipboard.");
+    } catch (error) {
+      setCopyMessage(`Could not copy preview: ${error.message || "Clipboard access is unavailable."}`);
+    }
+  }
+
+  async function copySearchResult() {
+    if (!readerContent) return;
+    try {
+      await navigator.clipboard.writeText(readerContent);
+      setSearchCopyMessage("Preview copied to clipboard.");
+    } catch (error) {
+      setSearchCopyMessage(`Could not copy search result: ${error.message || "Clipboard access is unavailable."}`);
+    }
+  }
+
+  function clearSearchResult() {
+    setReaderContent("");
+    setReaderFile("");
+    setReaderResults([]);
+    setReaderMessage(null);
+    setSearchCopyMessage("");
+  }
+
+  function selectReaderResult(path) {
+    const result = readerResults.find(item => item.path === path);
+    if (!result) return;
+    setReaderFile(result.path);
+    setReaderContent(result.content);
+    setSearchCopyMessage("");
+  }
+
+  function clearPreview() {
+    setPreviewContent("");
+    setPreviewMeta(null);
+    setCopyMessage("");
+    setPreviewOpen(true);
   }
 
   const validationErrors = {
@@ -274,36 +329,73 @@ export default function App() {
     return decodeContent(data.content || "");
   }
 
+  async function listTextFiles(path) {
+    const items = await githubRequest(contentsEndpoint(path));
+    if (!Array.isArray(items)) throw new Error(`The selected path is not a folder: ${path}`);
+
+    const files = [];
+    for (const item of items) {
+      if (item.type === "file" && /\.txt$/i.test(item.name)) {
+        files.push(item.path);
+      } else if (item.type === "dir") {
+        files.push(...await listTextFiles(item.path));
+      }
+    }
+    return files.sort((a, b) => a.localeCompare(b));
+  }
+
   async function loadWorklogForDate(query = "") {
     setReaderMessage(null);
     setReaderContent("");
     setReaderFile("");
+    setReaderResults([]);
     if (!hasReaderConnection()) return;
 
-    const parts = getDateParts(worklogDate);
     const subfolders = worklogFolderPath.trim().split(/[\\/]+/).filter(Boolean);
-    const path = ["data", "worklogs", String(parts.year), ...subfolders, parts.fileName].join("/");
+    const parts = worklogDate ? getDateParts(worklogDate) : null;
+    const searchRoot = parts
+      ? ["data", "worklogs", String(parts.year), ...subfolders].join("/")
+      : ["data", "worklogs", ...subfolders].join("/");
     setBusy(true);
     try {
-      const content = await fetchFileContent(path);
-      const worklogContent = query.trim() ? extractDateSection(content, parts.dateHeading) : content;
-      const result = searchFileContent(path, worklogContent, query);
-      setReaderFile(path);
-      setReaderContent(result.content);
+      let paths;
+      if (parts || !subfolders.length) {
+        paths = await listTextFiles(searchRoot);
+      } else {
+        const yearFolders = await githubRequest(contentsEndpoint("data/worklogs"));
+        if (!Array.isArray(yearFolders)) throw new Error("The worklogs path is not a folder.");
+        const yearDirectories = yearFolders.filter(item => item.type === "dir");
+        const fileLists = await Promise.all(yearDirectories.map(async yearFolder => {
+          try {
+            return await listTextFiles([yearFolder.path, ...subfolders].join("/"));
+          } catch (error) {
+            if (error.status === 404) return [];
+            throw error;
+          }
+        }));
+        paths = fileLists.flat();
+      }
+      const results = (await Promise.all(paths.map(async path => {
+        const content = await fetchFileContent(path);
+        const scopedContent = parts ? extractDateSection(content, parts.dateHeading) : content;
+        if (parts && !scopedContent) return null;
+        const result = searchFileContent(path, scopedContent, query);
+        return result.matched ? { path, content: result.content } : null;
+      }))).filter(Boolean);
+      setReaderResults(results);
+      setReaderFile(results[0]?.path || "");
+      setReaderContent(results[0]?.content || "");
       setReaderMessage({
-        type: result.matched && worklogContent ? "success" : "info",
-        text: query.trim()
-          ? result.matched
-            ? `Found ${result.matchCount} matching ${result.matchCount === 1 ? "line or filename" : "lines"} in the worklog for ${parts.dateHeading}.`
-            : `No matches found in the worklog for ${parts.dateHeading}.`
-          : worklogContent ? `Monthly worklogs loaded for ${parts.dateHeading.slice(3)}.` : `No worklogs found for ${parts.dateHeading.slice(3)}.`
+        type: results.length ? "success" : "info",
+        text: results.length
+          ? `Found ${results.length} matching worklog file${results.length === 1 ? "" : "s"}${parts ? ` for ${parts.dateHeading}` : ""}.`
+          : `No worklog files matched${parts ? ` ${parts.dateHeading}` : " the selected filters"}.`
       });
     } catch (error) {
       if (error.status === 404) {
-        setReaderFile(path);
-        setReaderMessage({ type: "info", text: `Worklog file not found or not accessible: ${path}` });
+        setReaderMessage({ type: "info", text: `No worklog folder found or accessible: ${searchRoot}` });
       } else {
-        setReaderMessage({ type: "error", text: `Could not fetch the worklog: ${error.message}` });
+        setReaderMessage({ type: "error", text: `Could not search worklogs: ${error.message}` });
       }
     } finally {
       setBusy(false);
@@ -312,42 +404,24 @@ export default function App() {
 
   async function loadBusinessFiles(query = "") {
     setReaderMessage(null);
-    setBusinessFiles([]);
-    setBusinessFile("");
+    setReaderResults([]);
     if (!hasReaderConnection()) return;
 
     setBusy(true);
     try {
-      const files = await githubRequest(contentsEndpoint("data/business"));
-      if (!Array.isArray(files)) throw new Error("The business path is a file, not a folder.");
-      const textFiles = files.filter(item => item.type === "file" && /\.txt$/i.test(item.name));
-      const sortedFiles = textFiles.map(item => item.name).sort((a, b) => a.localeCompare(b));
-      const matches = query.trim()
-        ? await Promise.all(sortedFiles.map(async name => {
-            const path = `data/business/${name}`;
-            const content = await fetchFileContent(path);
-            return { name, path, ...searchFileContent(path, content, query) };
-          }))
-        : [];
-      const matchingFiles = query.trim()
-        ? matches.filter(result => result.matched)
-        : sortedFiles.map(name => ({ name, path: `data/business/${name}` }));
-      const availableFiles = matchingFiles.map(result => result.name);
-      setBusinessFiles(availableFiles);
-      const selectedFile = availableFiles.includes(businessFile) ? businessFile : (availableFiles[0] || "");
-      setBusinessFile(selectedFile);
-      if (selectedFile) {
-        const selectedResult = matchingFiles.find(result => result.name === selectedFile);
-        const content = selectedResult?.content ?? await fetchFileContent(`data/business/${selectedFile}`);
-        setReaderFile(`data/business/${selectedFile}`);
-        setReaderContent(content);
-      }
+      const paths = await listTextFiles("data/business");
+      const results = (await Promise.all(paths.map(async path => {
+        const content = await fetchFileContent(path);
+        const result = searchFileContent(path, content, query);
+        return result.matched ? { path, content: result.content } : null;
+      }))).filter(Boolean);
+      setReaderResults(results);
+      setReaderFile(results[0]?.path || "");
+      setReaderContent(results[0]?.content || "");
       setReaderMessage({
-        type: selectedFile ? "success" : "info",
-        text: selectedFile
-          ? query.trim()
-            ? `Found ${availableFiles.length} matching business file${availableFiles.length === 1 ? "" : "s"} by filename or contents. Showing ${selectedFile}.`
-            : `Found ${textFiles.length} business text file${textFiles.length === 1 ? "" : "s"} and loaded ${selectedFile}. Select a different file and press Search to load it.`
+        type: results.length ? "success" : "info",
+        text: results.length
+          ? `Found ${results.length} matching business file${results.length === 1 ? "" : "s"}.`
           : query.trim() ? "No business files match that search." : "No text files found in data/business."
       });
     } catch (error) {
@@ -357,42 +431,11 @@ export default function App() {
     }
   }
 
-  async function loadBusinessFile(query = "") {
-    setReaderMessage(null);
-    setReaderContent("");
-    setReaderFile("");
-    if (!hasReaderConnection()) return;
-    if (!businessFile) {
-      setReaderMessage({ type: "error", text: "Select a business file first." });
-      return;
-    }
-
-    const path = `data/business/${businessFile}`;
-    setBusy(true);
-    try {
-      const content = await fetchFileContent(path);
-      const result = searchFileContent(path, content, query);
-      setReaderFile(path);
-      setReaderContent(result.content);
-      setReaderMessage({
-        type: result.matched ? "success" : "info",
-        text: query.trim()
-          ? result.matched
-            ? `Found ${result.matchCount} matching ${result.matchCount === 1 ? "line or filename" : "lines"} in ${businessFile}.`
-            : `No matches found in ${businessFile}.`
-          : `Loaded ${businessFile}.`
-      });
-    } catch (error) {
-      setReaderMessage({ type: "error", text: `Could not fetch the business file: ${error.message}` });
-    } finally {
-      setBusy(false);
-    }
-  }
-
   async function loadTodayTodos(query = "") {
     setReaderMessage(null);
     setReaderContent("");
     setReaderFile("");
+    setReaderResults([]);
     if (!hasReaderConnection()) return;
 
     const today = todayInIndia();
@@ -440,6 +483,7 @@ export default function App() {
       const result = searchFileContent(todayPath, content, query);
       setReaderFile(todayPath);
       setReaderContent(result.content);
+      setReaderResults([{ path: todayPath, content: result.content }]);
 
       if (deletionErrors.length) {
         setReaderMessage({
@@ -471,6 +515,7 @@ export default function App() {
     setReaderMessage(null);
     setReaderContent("");
     setReaderFile("");
+    setSearchCopyMessage("");
 
     if (!category) {
       setSearchCategory("");
@@ -478,28 +523,22 @@ export default function App() {
       return;
     }
 
-    if (!searchText.trim() && category !== "worklogs") {
-      setReaderMessage({ type: "error", text: "Enter text or a file name to search for." });
+    if (category === "todos" && !searchText.trim()) {
+      setReaderMessage({ type: "error", text: "Enter text or a file name to search today's todos." });
       return;
     }
 
     if (!hasReaderConnection()) return;
 
-    const categoryChanged = category !== searchCategory;
     setSearchCategory(category);
-    if (categoryChanged) {
-      setBusinessFiles([]);
-      setBusinessFile("");
-    }
+    setReaderResults([]);
 
     if (category === "worklogs") {
       await loadWorklogForDate(searchText);
     } else if (category === "todos") {
       await loadTodayTodos(searchText);
-    } else if (searchText.trim() || categoryChanged || !businessFiles.length) {
-      await loadBusinessFiles(searchText);
     } else {
-      await loadBusinessFile(searchText);
+      await loadBusinessFiles(searchText);
     }
   }
 
@@ -542,6 +581,7 @@ export default function App() {
 
   async function loadPreview() {
     setMessage(null);
+    setCopyMessage("");
     setShowValidation(true);
     if (hasValidationErrors) {
       setMessage({ type: "error", text: "Please fix the highlighted required fields." });
@@ -590,6 +630,7 @@ export default function App() {
   
   async function saveToGithub() {
     setMessage(null);
+    setCopyMessage("");
     setShowValidation(true);
     setShowUploadValidation(true);
 
@@ -764,8 +805,10 @@ export default function App() {
           </div>
         </div>
         <p className="hint">Use a fine-grained token limited to this repository with <b>Contents: Read and write</b>. The token stays in this tab and is not saved by this app.</p>
+        {!workspaceOpen && <button type="button" className="primary-button" onClick={openWorkspace} aria-expanded={workspaceOpen}>Open workspace</button>}
       </section>
 
+      {workspaceOpen && <>
       <nav className="tab-bar" role="tablist" aria-label="Log tools">
         <button type="button" role="tab" aria-selected={activeTab === "add"} className={activeTab === "add" ? "active" : ""} onClick={() => setActiveTab("add")} disabled={busy}>Add log</button>
         <button type="button" role="tab" aria-selected={activeTab === "search"} className={activeTab === "search" ? "active" : ""} onClick={() => setActiveTab("search")} disabled={busy}>Search logs</button>
@@ -839,7 +882,8 @@ export default function App() {
         </div>
 
         <aside className="preview-panel">
-          <div className="preview-header"><div><span className="preview-kicker">LIVE PREVIEW</span><h2>Detailed log</h2></div><button className="icon-button" onClick={() => setPreviewOpen(v => !v)} aria-label="Toggle preview">{previewOpen ? <EyeOff size={17} /> : <Eye size={17} />}</button></div>
+          <div className="preview-header"><div><span className="preview-kicker">LIVE PREVIEW</span><h2>Detailed log</h2></div><div><button type="button" className="icon-button" onClick={copyPreview} aria-label="Copy preview" title="Copy preview" disabled={!previewContent}><Copy size={17} /></button><button type="button" className="icon-button" onClick={clearPreview} aria-label="Clear preview" title="Clear preview" disabled={!previewContent && !previewMeta}><Eraser size={17} /></button><button type="button" className="icon-button" onClick={() => setPreviewOpen(v => !v)} aria-label="Toggle preview">{previewOpen ? <EyeOff size={17} /> : <Eye size={17} />}</button></div></div>
+          {copyMessage && <div className={`copy-feedback ${copyMessage.startsWith("Could not") ? "error" : ""}`} role="status">{copyMessage}</div>}
           <div className="preview-file"><FileText size={16} /><span>{targetFileName || "Select a log type"}</span><span className="branch-pill">{branch.trim() || "main"}</span></div>
           {previewOpen && <div className="code-preview">{previewContent ? previewContent.split("\n").map((line, index) => <div className={`code-line ${/^\d{2}-[A-Z][a-z]{2}-\d{4}$/.test(line) ? "date-line" : line === "++++++++" ? "separator-line" : line.startsWith("https://") ? "url-line" : ""}`} key={`${index}-${line}`}>{line || "\u00a0"}</div>) : <div className="empty-preview"><div className="empty-icon"><Link2 size={22} /></div><strong>Your log preview appears here</strong><span>Enter your repository and details, then choose Preview update.</span></div>}</div>}
           <div className="rules-card"><strong><CheckCircle2 size={16} /> Formatting rules</strong><ul><li>Date heading: <code>dd-MMM-yyyy</code></li><li>Section divider: <code>++++++++</code></li><li>Exactly two blank lines between date sections</li><li>Entries listed once per date</li><li>Creates the monthly file if missing</li></ul></div>
@@ -861,11 +905,11 @@ export default function App() {
           <input id="search-folder" value={searchFolder} onChange={event => {
             setSearchFolder(event.target.value);
             setSearchCategory("");
-            setBusinessFiles([]);
-            setBusinessFile("");
             setReaderContent("");
             setReaderFile("");
+            setReaderResults([]);
             setReaderMessage(null);
+            setSearchCopyMessage("");
           }} onKeyDown={event => { if (event.key === "Enter" && !busy) checkFolder(); }} placeholder="worklogs, business, or todos" />
           <p className="hint">You can enter <code>worklogs</code>, <code>business</code>, or <code>todos</code>.</p>
           <label htmlFor="search-text">Search text or file name</label>
@@ -876,34 +920,22 @@ export default function App() {
             }} onKeyDown={event => { if (event.key === "Enter" && !busy) checkFolder(); }} placeholder="Enter text to find in log contents or file names" />
             <button type="button" className="primary-button" onClick={checkFolder} disabled={busy}>{busy ? <><LoaderCircle className="spin" size={17} /> Searching…</> : <><Search size={17} /> Search</>}</button>
           </div>
-          <p className="hint">Enter a repository URL, access token, and folder. Search text is optional for worklogs; leave it blank to load the selected month. Business searches all text files in the folder.</p>
+          <p className="hint">Search text is optional for Worklogs and Business. Worklogs can be filtered by date and subfolder; leaving the date blank searches across years. All matching text files are shown as separate previews.</p>
           <div className="search-path">
             <strong>Search path</strong>
             <code>{searchPath || "Enter worklogs, business, or todos"}</code>
           </div>
         </div>
 
-        {searchCategory === "worklogs" && (
+        {searchPathCategory === "worklogs" && (
           <div className="reader-toolbar">
             <div>
-              <label htmlFor="worklog-date">Worklog date</label>
+              <label htmlFor="worklog-date">Worklog date <span className="optional">optional</span></label>
               <div className="date-control"><CalendarDays size={18} /><input id="worklog-date" type="date" value={worklogDate} onChange={event => setWorklogDate(event.target.value)} /></div>
               <div className="worklog-subfolder-field">
                 <label htmlFor="worklog-folder">Worklogs subfolder <span className="optional">optional</span></label>
                 <input id="worklog-folder" value={worklogFolderPath} onChange={event => setWorklogFolderPath(event.target.value)} placeholder="e.g. team" />
               </div>
-            </div>
-          </div>
-        )}
-
-        {searchCategory === "business" && businessFiles.length > 0 && (
-          <div className="reader-toolbar">
-            <div>
-              <label htmlFor="business-file">Business text file</label>
-              <select id="business-file" value={businessFile} onChange={event => setBusinessFile(event.target.value)}>
-                <option value="">Select a file</option>
-                {businessFiles.map(file => <option value={file} key={file}>{file}</option>)}
-              </select>
             </div>
           </div>
         )}
@@ -917,12 +949,31 @@ export default function App() {
 
         {readerMessage && <div className={`notice ${readerMessage.type}`} role={readerMessage.type === "error" ? "alert" : "status"}>{readerMessage.type === "success" ? <CheckCircle2 size={18} /> : <AlertCircle size={18} />}<div>{readerMessage.text}</div></div>}
         <div className="reader-result">
-          <div className="preview-file"><FileText size={16} /><span>{readerFile || "Fetched content will appear here"}</span><span className="branch-pill">{selectedBranch}</span></div>
-          <pre>{readerFile ? (readerContent || "No content found for this file.") : "Connect your repository, then fetch content to view it here."}</pre>
+          {readerResults.length > 1 && <div className="reader-result-select">
+            <label htmlFor="reader-result-file">Matching files</label>
+            <select id="reader-result-file" value={readerFile} onChange={event => selectReaderResult(event.target.value)}>
+              {readerResults.map(result => <option value={result.path} key={result.path}>{result.path}</option>)}
+            </select>
+          </div>}
+          <div className="reader-result-actions"><button type="button" className="secondary-button" onClick={copySearchResult} disabled={!readerContent}><Copy size={16} /> Copy preview</button><button type="button" className="secondary-button" onClick={clearSearchResult} disabled={!readerFile && !readerContent && !readerResults.length && !readerMessage}><Eraser size={16} /> Clear results</button></div>
+          {searchCopyMessage && <div className={`copy-feedback ${searchCopyMessage.startsWith("Could not") ? "error" : ""}`} role="status">{searchCopyMessage}</div>}
+          {readerResults.length
+            ? (() => {
+              const result = readerResults.find(item => item.path === readerFile) || readerResults[0];
+              return <div className="reader-result-card" key={result.path}>
+                <div className="preview-file"><FileText size={16} /><span>{result.path}</span><span className="branch-pill">{selectedBranch}</span></div>
+                <pre>{result.content || "No matching content found in this file."}</pre>
+              </div>;
+            })()
+            : <div className="reader-result-card">
+              <div className="preview-file"><FileText size={16} /><span>{readerFile || "Fetched content will appear here"}</span><span className="branch-pill">{selectedBranch}</span></div>
+              <pre>{readerFile ? (readerContent || "No content found for this file.") : "Connect your repository, then fetch content to view it here."}</pre>
+            </div>}
         </div>
       </section>
       )}
       <footer className="footer"><span>Ticket Log Manager</span><span>React · GitHub Contents API</span></footer>
+      </>}
     </main>
   );
 }
