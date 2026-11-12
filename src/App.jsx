@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from "react";
-import { Github, FileText, Link2, CalendarDays, CheckCircle2, AlertCircle, Eye, EyeOff, LoaderCircle, ExternalLink, Search } from "lucide-react";
+import { Github, FileText, Link2, CalendarDays, CheckCircle2, AlertCircle, Eye, EyeOff, LoaderCircle, ExternalLink, Search, RotateCcw, Eraser } from "lucide-react";
 
 const API = "https://api.github.com";
 const todayInIndia = () => new Intl.DateTimeFormat("en-CA", {
@@ -198,6 +198,41 @@ export default function App() {
         ? `data/todos/${getTodoFileName(todayInIndia())}`
         : "";
 
+  function resetLogForms() {
+    const today = todayInIndia();
+    setLogType("");
+    setFilePath("");
+    setYearFolder("");
+    setCustomFileName("");
+    setTicketInput("");
+    setDate(today);
+    setMessage(null);
+    setPreviewOpen(true);
+    setPreviewContent("");
+    setPreviewMeta(null);
+    setShowValidation(false);
+    setShowUploadValidation(false);
+    setSearchFolder("");
+    setSearchText("");
+    setSearchCategory("");
+    setWorklogDate(today);
+    setWorklogFolderPath("");
+    setBusinessFiles([]);
+    setBusinessFile("");
+    setReaderContent("");
+    setReaderFile("");
+    setReaderMessage(null);
+  }
+
+  function resetAll() {
+    resetLogForms();
+    setOwnerRepo("");
+    setBranch("main");
+    setToken("");
+    setShowToken(false);
+    setActiveTab("add");
+  }
+
   const validationErrors = {
     logType: !logType
       ? "Select a log type."
@@ -251,17 +286,17 @@ export default function App() {
     setBusy(true);
     try {
       const content = await fetchFileContent(path);
-      const section = extractDateSection(content, parts.dateHeading);
-      const result = searchFileContent(path, section, query);
+      const worklogContent = query.trim() ? extractDateSection(content, parts.dateHeading) : content;
+      const result = searchFileContent(path, worklogContent, query);
       setReaderFile(path);
       setReaderContent(result.content);
       setReaderMessage({
-        type: result.matched && section ? "success" : "info",
+        type: result.matched && worklogContent ? "success" : "info",
         text: query.trim()
           ? result.matched
             ? `Found ${result.matchCount} matching ${result.matchCount === 1 ? "line or filename" : "lines"} in the worklog for ${parts.dateHeading}.`
             : `No matches found in the worklog for ${parts.dateHeading}.`
-          : section ? `Worklog section loaded for ${parts.dateHeading}.` : `No worklog section found for ${parts.dateHeading}.`
+          : worklogContent ? `Monthly worklogs loaded for ${parts.dateHeading.slice(3)}.` : `No worklogs found for ${parts.dateHeading.slice(3)}.`
       });
     } catch (error) {
       if (error.status === 404) {
@@ -443,7 +478,7 @@ export default function App() {
       return;
     }
 
-    if (!searchText.trim()) {
+    if (!searchText.trim() && category !== "worklogs") {
       setReaderMessage({ type: "error", text: "Enter text or a file name to search for." });
       return;
     }
@@ -735,6 +770,10 @@ export default function App() {
         <button type="button" role="tab" aria-selected={activeTab === "add"} className={activeTab === "add" ? "active" : ""} onClick={() => setActiveTab("add")} disabled={busy}>Add log</button>
         <button type="button" role="tab" aria-selected={activeTab === "search"} className={activeTab === "search" ? "active" : ""} onClick={() => setActiveTab("search")} disabled={busy}>Search logs</button>
       </nav>
+      <div className="reset-actions">
+        <button type="button" className="secondary-button" onClick={resetLogForms} disabled={busy}><RotateCcw size={16} /> Reset forms</button>
+        <button type="button" className="secondary-button" onClick={resetAll} disabled={busy}><Eraser size={16} /> Reset all</button>
+      </div>
 
       {activeTab === "add" ? <section className="workspace">
         <div className="form-panel">
@@ -837,7 +876,7 @@ export default function App() {
             }} onKeyDown={event => { if (event.key === "Enter" && !busy) checkFolder(); }} placeholder="Enter text to find in log contents or file names" />
             <button type="button" className="primary-button" onClick={checkFolder} disabled={busy}>{busy ? <><LoaderCircle className="spin" size={17} /> Searching…</> : <><Search size={17} /> Search</>}</button>
           </div>
-          <p className="hint">Enter a repository URL, access token, folder, and search text before searching. Business searches all text files in the folder.</p>
+          <p className="hint">Enter a repository URL, access token, and folder. Search text is optional for worklogs; leave it blank to load the selected month. Business searches all text files in the folder.</p>
           <div className="search-path">
             <strong>Search path</strong>
             <code>{searchPath || "Enter worklogs, business, or todos"}</code>

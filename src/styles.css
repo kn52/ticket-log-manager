@@ -502,6 +502,18 @@ html body .connection-panel .section-heading {
   color: #4d45c3;
 }
 
+.reset-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin: -6px 0 18px;
+}
+
+.reset-actions .secondary-button {
+  min-height: 38px;
+  padding: 8px 12px;
+}
+
 html body .reader-panel {
   padding: 30px;
 }
