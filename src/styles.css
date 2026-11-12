@@ -860,6 +860,28 @@ html body .notice.info {
 }
 
 @media (max-width: 560px) {
+  html body .connection-panel .repo-input {
+    flex-wrap: nowrap;
+  }
+
+  html body .connection-panel .repo-input-prefix {
+    width: auto;
+    padding: 0 0 0 12px;
+    border-bottom: 0;
+  }
+
+  html body .connection-panel .repo-input > .clearable-field {
+    flex: 1 1 0;
+    width: auto;
+    min-width: 0;
+  }
+
+  html body .connection-panel .repo-input input {
+    min-width: 0;
+    min-height: 44px;
+    padding-left: 12px;
+  }
+
   .connection-fields,
   .reader-toolbar,
   .query-search-controls {
