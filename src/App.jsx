@@ -585,11 +585,6 @@ export default function App() {
       return;
     }
 
-    if (category === "todos" && !searchText.trim()) {
-      setReaderMessage({ type: "error", text: "Enter text or a file name to search today's todos." });
-      return;
-    }
-
     if (!hasReaderConnection()) return;
 
     setSearchCategory(category);
@@ -1007,7 +1002,7 @@ export default function App() {
             }} onKeyDown={event => { if (event.key === "Enter" && !busy) checkFolder(); }} placeholder="Enter text to find in log contents or file names" /></ClearableField>
             <button type="button" className="primary-button" onClick={checkFolder} disabled={busy}>{busy ? <><LoaderCircle className="spin" size={17} /> Searching…</> : <><Search size={17} /> Search</>}</button>
           </div>
-          <p className="hint">Search text is optional for Worklogs and Business. Worklogs can be filtered by date and subfolder; leaving the date blank searches across years. All matching text files are shown as separate previews.</p>
+          <p className="hint">Search text is optional for all folders. Blank searches show all matching files; Todos shows files dated today. Worklogs can be filtered by date and subfolder; leaving the date blank searches across all years.</p>
           <div className="search-path">
             <strong>Search path</strong>
             <code>{searchPath || "Enter worklogs, business, or todos"}</code>
