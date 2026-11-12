@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from "react";
-import { Github, FileText, Link2, CalendarDays, CheckCircle2, AlertCircle, Eye, EyeOff, LoaderCircle, ExternalLink, Search, RotateCcw, Eraser, Copy } from "lucide-react";
+import { Github, FileText, Link2, CalendarDays, CheckCircle2, AlertCircle, Eye, EyeOff, LoaderCircle, ExternalLink, Search, RotateCcw, Eraser, Copy, FolderTree, X } from "lucide-react";
 
 const API = "https://api.github.com";
 const todayInIndia = () => new Intl.DateTimeFormat("en-CA", {
@@ -77,6 +77,15 @@ function searchFileContent(path, content, query) {
     content: matchingLines.join("\n"),
     matchCount: matchingLines.length
   };
+}
+
+function ClearableField({ value, onClear, children, multiline = false }) {
+  return (
+    <span className={`clearable-field${multiline ? " multiline" : ""}`}>
+      {children}
+      {value && <button type="button" className="clear-input-button" onClick={onClear} aria-label="Clear input" title="Clear input"><X size={15} /></button>}
+    </span>
+  );
 }
 
 
@@ -173,9 +182,13 @@ export default function App() {
   const [readerFile, setReaderFile] = useState("");
   const [readerMessage, setReaderMessage] = useState(null);
   const [searchCopyMessage, setSearchCopyMessage] = useState("");
+  const [folderTree, setFolderTree] = useState([]);
+  const [folderTreeOpen, setFolderTreeOpen] = useState(false);
+  const [folderTreeLoading, setFolderTreeLoading] = useState(false);
+  const [folderTreeError, setFolderTreeError] = useState("");
 
   const entries = useMemo(() => normalizeEntries(ticketInput), [ticketInput]);
-  const dateParts = useMemo(() => getDateParts(date), [date]);
+  const dateParts = useMemo(() => getDateParts(date || todayInIndia()), [date]);
   const folderPathParts = filePath.trim().split(/[\\/]+/).filter(Boolean);
   const targetFileName = logType === "worklogs"
     ? (customFileName.trim() || dateParts.fileName)
@@ -227,6 +240,9 @@ export default function App() {
     setReaderResults([]);
     setReaderMessage(null);
     setSearchCopyMessage("");
+    setFolderTree([]);
+    setFolderTreeOpen(false);
+    setFolderTreeError("");
   }
 
   function resetAll() {
@@ -305,7 +321,10 @@ export default function App() {
       : ""
   };
   const hasValidationErrors = Object.values(validationErrors).some(Boolean);
-  const repoMatch = ownerRepo.trim().match(/^(?:https:\/\/github\.com\/)?([^/\s]+)\/([^/\s#?]+)\/?$/);
+  const repositoryPath = ownerRepo.trim()
+    .replace(/^https?:\/\/github\.com\//i, "")
+    .replace(/^\/+|\/+$/g, "");
+  const repoMatch = repositoryPath.match(/^([^/\s]+)\/([^/\s#?]+)$/);
   const owner = repoMatch?.[1];
   const repo = repoMatch?.[2]?.replace(/\.git$/, "");
   const selectedBranch = branch.trim() || "main";
@@ -342,6 +361,51 @@ export default function App() {
       }
     }
     return files.sort((a, b) => a.localeCompare(b));
+  }
+
+  async function loadFolderTree(path) {
+    const items = await githubRequest(contentsEndpoint(path));
+    if (!Array.isArray(items)) throw new Error(`The selected path is not a folder: ${path}`);
+
+    const folders = items.filter(item => item.type === "dir");
+    return Promise.all(folders.map(async folder => ({
+      name: folder.name,
+      path: folder.path,
+      children: await loadFolderTree(folder.path)
+    })));
+  }
+
+  async function toggleFolderTree() {
+    if (folderTreeOpen) {
+      setFolderTreeOpen(false);
+      return;
+    }
+    if (folderTree.length) {
+      setFolderTreeOpen(true);
+      return;
+    }
+    if (!hasReaderConnection()) return;
+
+    setFolderTreeLoading(true);
+    setFolderTreeError("");
+    try {
+      setFolderTree(await loadFolderTree("data"));
+      setFolderTreeOpen(true);
+    } catch (error) {
+      setFolderTreeError(`Could not load folder tree: ${error.message}`);
+    } finally {
+      setFolderTreeLoading(false);
+    }
+  }
+
+  function renderFolderTree(nodes) {
+    if (!nodes.length) return <span className="folder-tree-empty">No folders found.</span>;
+    return <ul>{nodes.map(node => (
+      <li key={node.path}>
+        <span><FolderTree size={14} /> {node.name}</span>
+        {node.children.length > 0 && renderFolderTree(node.children)}
+      </li>
+    ))}</ul>;
   }
 
   async function loadWorklogForDate(query = "") {
@@ -635,7 +699,7 @@ export default function App() {
     setShowUploadValidation(true);
 
     const uploadErrors = Object.values(validationErrors).filter(Boolean);
-    if (!owner || !repo) uploadErrors.push("Enter a valid GitHub repository URL.");
+    if (!owner || !repo) uploadErrors.push("Enter a GitHub repository as owner/repository.");
     if (!token.trim()) uploadErrors.push("Enter a GitHub token with repository Contents read/write permission.");
     if (!entries.length) uploadErrors.push("Enter at least one ticket or summary detail.");
     if (uploadErrors.length) {
@@ -790,17 +854,20 @@ export default function App() {
           <div className="step-number">01</div>
           <div><h2>Connect your repository</h2><p>These settings are shared by all tabs.</p></div>
         </div>
-        <label htmlFor="repo">GitHub repository URL</label>
-        <div className="input-with-icon"><Github size={17} /><input id="repo" value={ownerRepo} onChange={e => setOwnerRepo(e.target.value)} placeholder="https://github.com/owner/repository" autoComplete="off" aria-invalid={showUploadValidation && (!owner || !repo)} style={showUploadValidation && (!owner || !repo) ? { borderColor: "#dc2626" } : undefined} /></div>
-        {showUploadValidation && (!owner || !repo) && <span className="invalid-count" role="alert">Enter a valid GitHub repository URL.</span>}
+        <label htmlFor="repo">GitHub repository</label>
+        <div className="repo-input">
+          <span className="repo-input-prefix"><Github size={17} /><span>https://github.com</span></span>
+          <ClearableField value={ownerRepo} onClear={() => setOwnerRepo("")}><input id="repo" value={ownerRepo} onChange={e => setOwnerRepo(e.target.value)} placeholder="/owner/repository" autoComplete="off" aria-invalid={showUploadValidation && (!owner || !repo)} style={showUploadValidation && (!owner || !repo) ? { borderColor: "#dc2626" } : undefined} /></ClearableField>
+        </div>
+        {showUploadValidation && (!owner || !repo) && <span className="invalid-count" role="alert">Enter a GitHub repository as owner/repository.</span>}
         <div className="connection-fields">
           <div>
             <label htmlFor="branch">Branch</label>
-            <input id="branch" value={branch} onChange={e => setBranch(e.target.value)} placeholder="main" />
+            <ClearableField value={branch} onClear={() => setBranch("")}><input id="branch" value={branch} onChange={e => setBranch(e.target.value)} placeholder="main" /></ClearableField>
           </div>
           <div>
             <label htmlFor="token">GitHub personal access token</label>
-            <div className="token-wrap"><input id="token" type={showToken ? "text" : "password"} value={token} onChange={e => setToken(e.target.value)} placeholder="Paste your GitHub token" autoComplete="off" aria-invalid={showUploadValidation && !token.trim()} style={showUploadValidation && !token.trim() ? { borderColor: "#dc2626" } : undefined} /><button className="icon-button" type="button" onClick={() => setShowToken(v => !v)} aria-label={showToken ? "Hide token" : "Show token"}>{showToken ? <EyeOff size={17} /> : <Eye size={17} />}</button></div>
+            <div className="token-wrap"><ClearableField value={token} onClear={() => setToken("")}><input id="token" type={showToken ? "text" : "password"} value={token} onChange={e => setToken(e.target.value)} placeholder="Paste your GitHub token" autoComplete="off" aria-invalid={showUploadValidation && !token.trim()} style={showUploadValidation && !token.trim() ? { borderColor: "#dc2626" } : undefined} /></ClearableField><button className="icon-button" type="button" onClick={() => setShowToken(v => !v)} aria-label={showToken ? "Hide token" : "Show token"}>{showToken ? <EyeOff size={17} /> : <Eye size={17} />}</button></div>
             {showUploadValidation && !token.trim() && <span className="invalid-count" role="alert">Enter a GitHub token with repository Contents read/write permission.</span>}
           </div>
         </div>
@@ -837,7 +904,7 @@ export default function App() {
           </div>
           <div className="path-section">
             <label htmlFor="path">Folder path <span className="optional">{logType === "worklogs" ? "optional" : "required"}</span></label>
-            <input id="path" value={filePath} onChange={e => setFilePath(e.target.value)} placeholder={logType === "worklogs" ? "Optional, e.g. project" : "Required, e.g. project"} aria-invalid={showValidation && Boolean(validationErrors.filePath)} style={showValidation && validationErrors.filePath ? { borderColor: "#dc2626" } : undefined} />
+            <ClearableField value={filePath} onClear={() => setFilePath("")}><input id="path" value={filePath} onChange={e => setFilePath(e.target.value)} placeholder={logType === "worklogs" ? "Optional, e.g. project" : "Required, e.g. project"} aria-invalid={showValidation && Boolean(validationErrors.filePath)} style={showValidation && validationErrors.filePath ? { borderColor: "#dc2626" } : undefined} /></ClearableField>
             {showValidation && validationErrors.filePath && <span className="invalid-count" role="alert">{validationErrors.filePath}</span>}
           </div>
 
@@ -848,7 +915,7 @@ export default function App() {
             <div><h2>Add log details</h2><p>Enter the details to include in this log.</p></div>
           </div>
           <label htmlFor="tickets">Jira ticket / summary details</label>
-          <textarea id="tickets" rows={5} value={ticketInput} onChange={e => setTicketInput(e.target.value)} placeholder={"Enter a Jira URL or a summary, for example:\nhttps://your-domain.atlassian.net/browse/PROJ-123\nInvestigated the issue and updated the workflow"} aria-invalid={showUploadValidation && !entries.length} style={showUploadValidation && !entries.length ? { borderColor: "#dc2626" } : undefined} />
+          <ClearableField value={ticketInput} onClear={() => setTicketInput("")} multiline><textarea id="tickets" rows={5} value={ticketInput} onChange={e => setTicketInput(e.target.value)} placeholder={"Enter a Jira URL or a summary, for example:\nhttps://your-domain.atlassian.net/browse/PROJ-123\nInvestigated the issue and updated the workflow"} aria-invalid={showUploadValidation && !entries.length} style={showUploadValidation && !entries.length ? { borderColor: "#dc2626" } : undefined} /></ClearableField>
           <div className="input-footer"><span>{entries.length} unique {entries.length === 1 ? "entry" : "entries"}</span></div>
           {showUploadValidation && !entries.length && <span className="invalid-count" role="alert">Enter at least one ticket or summary detail.</span>}
 
@@ -857,16 +924,16 @@ export default function App() {
             <div className="step-number">04</div>
             <div><h2>Choose log date</h2><p>Uses India time by default.</p></div>
           </div>
-          <div className="date-control"><CalendarDays size={18} /><input type="date" value={date} onChange={e => setDate(e.target.value)} /></div>
+          <div className="date-control"><CalendarDays size={18} /><ClearableField value={date} onClear={() => setDate("")}><input type="date" value={date} onChange={e => setDate(e.target.value)} /></ClearableField></div>
           <div className="two-col file-options">
             <div>
               <label htmlFor="year-folder">Year <span className="optional">{logType === "worklogs" ? "required" : "optional"}</span></label>
-              <input id="year-folder" type="text" value={yearFolder} onChange={e => setYearFolder(e.target.value)} placeholder="e.g. 2026" aria-invalid={showValidation && Boolean(validationErrors.yearFolder)} style={showValidation && validationErrors.yearFolder ? { borderColor: "#dc2626" } : undefined} />
+              <ClearableField value={yearFolder} onClear={() => setYearFolder("")}><input id="year-folder" type="text" value={yearFolder} onChange={e => setYearFolder(e.target.value)} placeholder="e.g. 2026" aria-invalid={showValidation && Boolean(validationErrors.yearFolder)} style={showValidation && validationErrors.yearFolder ? { borderColor: "#dc2626" } : undefined} /></ClearableField>
               {showValidation && validationErrors.yearFolder && <span className="invalid-count" role="alert">{validationErrors.yearFolder}</span>}
             </div>
             <div>
               <label htmlFor="file-name">File name <span className="optional">{logType === "worklogs" ? "optional" : "required"}</span></label>
-              <input id="file-name" value={customFileName} onChange={e => setCustomFileName(e.target.value)} placeholder={logType === "worklogs" ? dateParts.fileName : "Enter file name"} aria-invalid={showValidation && Boolean(validationErrors.customFileName)} style={showValidation && validationErrors.customFileName ? { borderColor: "#dc2626" } : undefined} />
+              <ClearableField value={customFileName} onClear={() => setCustomFileName("")}><input id="file-name" value={customFileName} onChange={e => setCustomFileName(e.target.value)} placeholder={logType === "worklogs" ? dateParts.fileName : "Enter file name"} aria-invalid={showValidation && Boolean(validationErrors.customFileName)} style={showValidation && validationErrors.customFileName ? { borderColor: "#dc2626" } : undefined} /></ClearableField>
               {showValidation && validationErrors.customFileName && <span className="invalid-count" role="alert">{validationErrors.customFileName}</span>}
             </div>
           </div>
@@ -902,7 +969,15 @@ export default function App() {
 
         <div className="folder-search">
           <label htmlFor="search-folder">Folder name</label>
-          <input id="search-folder" value={searchFolder} onChange={event => {
+          <ClearableField value={searchFolder} onClear={() => {
+            setSearchFolder("");
+            setSearchCategory("");
+            setReaderContent("");
+            setReaderFile("");
+            setReaderResults([]);
+            setReaderMessage(null);
+            setSearchCopyMessage("");
+          }}><input id="search-folder" value={searchFolder} onChange={event => {
             setSearchFolder(event.target.value);
             setSearchCategory("");
             setReaderContent("");
@@ -910,14 +985,25 @@ export default function App() {
             setReaderResults([]);
             setReaderMessage(null);
             setSearchCopyMessage("");
-          }} onKeyDown={event => { if (event.key === "Enter" && !busy) checkFolder(); }} placeholder="worklogs, business, or todos" />
+          }} onKeyDown={event => { if (event.key === "Enter" && !busy) checkFolder(); }} placeholder="worklogs, business, or todos" /></ClearableField>
           <p className="hint">You can enter <code>worklogs</code>, <code>business</code>, or <code>todos</code>.</p>
+          <button type="button" className="secondary-button folder-tree-toggle" onClick={toggleFolderTree} disabled={folderTreeLoading}>
+            {folderTreeLoading ? <><LoaderCircle className="spin" size={16} /> Loading folders…</> : <><FolderTree size={16} /> {folderTreeOpen ? "Hide available folders" : "Show available folders"}</>}
+          </button>
+          {folderTreeError && <p className="folder-tree-error" role="alert">{folderTreeError}</p>}
+          {folderTreeOpen && <div className="folder-tree" aria-label="Available repository folders">
+            <strong>data/</strong>
+            {renderFolderTree(folderTree)}
+          </div>}
           <label className="search-text-label" htmlFor="search-text">Search text or file name</label>
           <div className="query-search-controls">
-            <input id="search-text" value={searchText} onChange={event => {
+            <ClearableField value={searchText} onClear={() => {
+              setSearchText("");
+              setReaderMessage(null);
+            }}><input id="search-text" value={searchText} onChange={event => {
               setSearchText(event.target.value);
               setReaderMessage(null);
-            }} onKeyDown={event => { if (event.key === "Enter" && !busy) checkFolder(); }} placeholder="Enter text to find in log contents or file names" />
+            }} onKeyDown={event => { if (event.key === "Enter" && !busy) checkFolder(); }} placeholder="Enter text to find in log contents or file names" /></ClearableField>
             <button type="button" className="primary-button" onClick={checkFolder} disabled={busy}>{busy ? <><LoaderCircle className="spin" size={17} /> Searching…</> : <><Search size={17} /> Search</>}</button>
           </div>
           <p className="hint">Search text is optional for Worklogs and Business. Worklogs can be filtered by date and subfolder; leaving the date blank searches across years. All matching text files are shown as separate previews.</p>
@@ -931,10 +1017,10 @@ export default function App() {
           <div className="reader-toolbar">
             <div>
               <label htmlFor="worklog-date">Worklog date <span className="optional">optional</span></label>
-              <div className="date-control"><CalendarDays size={18} /><input id="worklog-date" type="date" value={worklogDate} onChange={event => setWorklogDate(event.target.value)} /></div>
+              <div className="date-control"><CalendarDays size={18} /><ClearableField value={worklogDate} onClear={() => setWorklogDate("")}><input id="worklog-date" type="date" value={worklogDate} onChange={event => setWorklogDate(event.target.value)} /></ClearableField></div>
               <div className="worklog-subfolder-field">
                 <label htmlFor="worklog-folder">Worklogs subfolder <span className="optional">optional</span></label>
-                <input id="worklog-folder" value={worklogFolderPath} onChange={event => setWorklogFolderPath(event.target.value)} placeholder="e.g. team" />
+                <ClearableField value={worklogFolderPath} onClear={() => setWorklogFolderPath("")}><input id="worklog-folder" value={worklogFolderPath} onChange={event => setWorklogFolderPath(event.target.value)} placeholder="e.g. team" /></ClearableField>
               </div>
             </div>
           </div>

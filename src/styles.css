@@ -169,6 +169,43 @@ html body .input-with-icon input {
   padding-left: 42px !important;
 }
 
+html body .repo-input {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  border: 1px solid #e1e4ed;
+  border-radius: 9px;
+  background: #fcfcfe;
+}
+
+html body .repo-input:focus-within {
+  border-color: #928cf0;
+  box-shadow: 0 0 0 3px #7068e51a;
+}
+
+html body .repo-input-prefix {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 8px;
+  padding-left: 12px;
+  color: #858ba0;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+html body .repo-input > .clearable-field {
+  flex: 1;
+}
+
+html body .connection-panel .repo-input .clearable-field input,
+html body .connection-panel .repo-input .clearable-field input:focus {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
 html body .two-col {
   gap: 16px;
   margin-top: 18px;
@@ -220,6 +257,65 @@ html body .icon-button {
 html body .hint {
   color: #7e8599;
   font-size: 11px;
+}
+
+html body .clearable-field {
+  position: relative;
+  display: block;
+  width: 100%;
+  min-width: 0;
+}
+
+html body .clearable-field > input,
+html body .clearable-field > textarea {
+  padding-right: 38px;
+}
+
+html body .clear-input-button {
+  position: absolute;
+  top: 50%;
+  right: 7px;
+  display: grid;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  place-items: center;
+  transform: translateY(-50%);
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: #8a8fa0;
+}
+
+html body .clearable-field.multiline .clear-input-button {
+  top: 9px;
+  transform: none;
+}
+
+html body .clear-input-button:hover {
+  background: #f0efff;
+  color: #4f46e5;
+}
+
+html body .token-wrap > .clearable-field {
+  flex: 1;
+}
+
+html body .token-wrap .clear-input-button {
+  right: 4px;
+}
+
+html body .token-wrap > .icon-button {
+  z-index: 1;
+  background: #fcfcfe;
+}
+
+html body .date-control > .clearable-field {
+  flex: 1;
+}
+
+html body .date-control .clear-input-button {
+  right: 27px;
 }
 
 html body .section-divider {
@@ -578,6 +674,53 @@ html body .reader-panel {
 
 .folder-search {
   margin: 22px 0;
+}
+
+.folder-tree-toggle {
+  margin-top: 12px;
+}
+
+.folder-tree {
+  margin-top: 12px;
+  padding: 13px 15px;
+  border: 1px solid #e8e8f3;
+  border-radius: 10px;
+  background: #fafaff;
+  color: #555b70;
+  font-size: 12px;
+}
+
+.folder-tree ul {
+  margin: 7px 0 0;
+  padding-left: 19px;
+  list-style: none;
+}
+
+.folder-tree > ul {
+  padding-left: 0;
+}
+
+.folder-tree li {
+  margin: 6px 0;
+}
+
+.folder-tree li > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #5d59a4;
+}
+
+.folder-tree-empty,
+.folder-tree-error {
+  display: block;
+  margin-top: 8px;
+  color: #7e8599;
+  font-size: 11px;
+}
+
+.folder-tree-error {
+  color: #a53838;
 }
 
 .folder-search .search-text-label {
