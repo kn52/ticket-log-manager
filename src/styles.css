@@ -520,6 +520,10 @@ html body .connection-panel .section-heading {
   margin: 11px 0 0;
 }
 
+html body .connection-panel > .primary-button {
+  margin-top: 16px;
+}
+
 .tab-bar {
   display: flex;
   gap: 6px;
@@ -574,6 +578,10 @@ html body .reader-panel {
 
 .folder-search {
   margin: 22px 0;
+}
+
+.folder-search .search-text-label {
+  margin-top: 20px;
 }
 
 .query-search-controls {

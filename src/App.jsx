@@ -912,7 +912,7 @@ export default function App() {
             setSearchCopyMessage("");
           }} onKeyDown={event => { if (event.key === "Enter" && !busy) checkFolder(); }} placeholder="worklogs, business, or todos" />
           <p className="hint">You can enter <code>worklogs</code>, <code>business</code>, or <code>todos</code>.</p>
-          <label htmlFor="search-text">Search text or file name</label>
+          <label className="search-text-label" htmlFor="search-text">Search text or file name</label>
           <div className="query-search-controls">
             <input id="search-text" value={searchText} onChange={event => {
               setSearchText(event.target.value);
