@@ -194,6 +194,10 @@ html body .repo-input-prefix {
   white-space: nowrap;
 }
 
+html body .repo-input-prefix > span {
+  display: none;
+}
+
 html body .repo-input > .clearable-field {
   flex: 1;
 }
