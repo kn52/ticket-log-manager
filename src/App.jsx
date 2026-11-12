@@ -206,21 +206,22 @@ export default function App() {
     : logType === "worklogs"
       ? ["data", "worklogs", yearFolder.trim(), ...folderPathParts, targetFileName].filter(Boolean).join("/")
       : ["data", ...folderPathParts, targetFileName].filter(Boolean).join("/");
-  const searchPathFolder = searchFolder.trim().replace(/^data[\\/]/i, "").replace(/[\\/]+$/, "").toLowerCase();
-  const searchPathCategory = ["worklogs", "business", "todos"].includes(searchPathFolder) ? searchPathFolder : "";
+  const searchPathFolder = searchFolder.trim().replace(/^data[\\/]/i, "").replace(/[\\/]+$/, "");
+  const searchPathParts = searchPathFolder.split(/[\\/]+/).filter(Boolean);
+  const searchPathCategory = searchPathParts.length === 1 && ["worklogs", "business", "todos"].includes(searchPathParts[0].toLowerCase())
+    ? searchPathParts[0].toLowerCase()
+    : "";
   const searchPath = searchPathCategory === "worklogs"
     ? worklogDate
       ? (() => {
         const parts = getDateParts(worklogDate);
         const subfolders = worklogFolderPath.trim().split(/[\\/]+/).filter(Boolean);
-        return ["data", "worklogs", String(parts.year), ...subfolders].join("/") + ` — ${parts.dateHeading}`;
+        return ["data", "worklogs", String(parts.year), ...subfolders].join("/") + `/ — ${parts.dateHeading}`;
       })()
-      : `data/worklogs${worklogFolderPath.trim() ? ` (all years) / ${worklogFolderPath.trim()}` : " (all years)"}`
-    : searchPathCategory === "business"
-      ? "data/business"
-      : searchPathCategory === "todos"
-        ? `data/todos/*${getDateParts(todayInIndia()).dateHeading}-todo-task.txt`
-        : "";
+      : `data/worklogs/ ${worklogFolderPath.trim() ? `(all years) / ${worklogFolderPath.trim()}/` : "(all years)"}`
+    : searchPathFolder
+      ? `data/${searchPathParts.join("/")}/`
+      : "";
 
   function resetLogForms() {
     const today = todayInIndia();
@@ -402,10 +403,17 @@ export default function App() {
     if (!nodes.length) return <span className="folder-tree-empty">No folders found.</span>;
     return <ul>{nodes.map(node => (
       <li key={node.path}>
-        <span><FolderTree size={14} /> {node.name}</span>
+        <button type="button" onClick={() => selectFolderFromTree(node.path)} disabled={busy}>
+          <FolderTree size={14} /> {node.name}
+        </button>
         {node.children.length > 0 && renderFolderTree(node.children)}
       </li>
     ))}</ul>;
+  }
+
+  function selectFolderFromTree(path) {
+    const folder = path.replace(/^data[\\/]/i, "");
+    setSearchFolder(folder);
   }
 
   async function loadWorklogForDate(query = "") {
@@ -466,14 +474,16 @@ export default function App() {
     }
   }
 
-  async function loadBusinessFiles(query = "") {
+  async function loadTextFilesInFolder(folderPath, query = "") {
     setReaderMessage(null);
+    setReaderContent("");
+    setReaderFile("");
     setReaderResults([]);
     if (!hasReaderConnection()) return;
 
     setBusy(true);
     try {
-      const paths = await listTextFiles("data/business");
+      const paths = await listTextFiles(folderPath);
       const results = (await Promise.all(paths.map(async path => {
         const content = await fetchFileContent(path);
         const result = searchFileContent(path, content, query);
@@ -482,14 +492,15 @@ export default function App() {
       setReaderResults(results);
       setReaderFile(results[0]?.path || "");
       setReaderContent(results[0]?.content || "");
+      const fileLabel = folderPath === "data/business" ? "business file" : "text file";
       setReaderMessage({
         type: results.length ? "success" : "info",
         text: results.length
-          ? `Found ${results.length} matching business file${results.length === 1 ? "" : "s"}.`
-          : query.trim() ? "No business files match that search." : "No text files found in data/business."
+          ? `Found ${results.length} matching ${fileLabel}${results.length === 1 ? "" : "s"}${folderPath === "data/business" ? "" : ` in ${folderPath}`}.`
+          : query.trim() ? `No files in ${folderPath} match that search.` : `No text files found in ${folderPath}.`
       });
     } catch (error) {
-      setReaderMessage({ type: "error", text: `Could not search business files: ${error.message}` });
+      setReaderMessage({ type: "error", text: `Could not search ${folderPath}: ${error.message}` });
     } finally {
       setBusy(false);
     }
@@ -571,17 +582,20 @@ export default function App() {
     }
   }
 
-  async function checkFolder() {
-    const folder = searchFolder.trim().replace(/^data[\\/]/i, "").replace(/[\\/]+$/, "").toLowerCase();
-    const category = ["worklogs", "business", "todos"].includes(folder) ? folder : "";
+  async function checkFolder(folderValue = searchFolder, query = searchText) {
+    const folder = folderValue.trim().replace(/^data[\\/]/i, "").replace(/^[\\/]+|[\\/]+$/g, "");
+    const folderParts = folder.split(/[\\/]+/).filter(Boolean);
+    const category = folderParts.length === 1 && ["worklogs", "business", "todos"].includes(folderParts[0].toLowerCase())
+      ? folderParts[0].toLowerCase()
+      : "";
     setReaderMessage(null);
     setReaderContent("");
     setReaderFile("");
     setSearchCopyMessage("");
 
-    if (!category) {
+    if (!folderParts.length || folderParts.some(part => part === "." || part === "..")) {
       setSearchCategory("");
-      setReaderMessage({ type: "error", text: "Enter one folder name: worklogs, business, or todos." });
+      setReaderMessage({ type: "error", text: "Enter a folder path under data, such as worklogs, business, or todos." });
       return;
     }
 
@@ -591,11 +605,12 @@ export default function App() {
     setReaderResults([]);
 
     if (category === "worklogs") {
-      await loadWorklogForDate(searchText);
+      await loadWorklogForDate(query);
     } else if (category === "todos") {
-      await loadTodayTodos(searchText);
+      await loadTodayTodos(query);
     } else {
-      await loadBusinessFiles(searchText);
+      const folderPath = category === "business" ? "data/business" : `data/${folderParts.join("/")}`;
+      await loadTextFilesInFolder(folderPath, query);
     }
   }
 
@@ -981,8 +996,8 @@ export default function App() {
             setReaderResults([]);
             setReaderMessage(null);
             setSearchCopyMessage("");
-          }} onKeyDown={event => { if (event.key === "Enter" && !busy) checkFolder(); }} placeholder="worklogs, business, or todos" /></ClearableField>
-          <p className="hint">You can enter <code>worklogs</code>, <code>business</code>, or <code>todos</code>.</p>
+          }} onKeyDown={event => { if (event.key === "Enter" && !busy) checkFolder(); }} placeholder="worklogs, business, todos, or a folder path" /></ClearableField>
+          <p className="hint">Enter a folder path manually, or click a folder in the tree to fill this field. Click Search to load its files.</p>
           <button type="button" className="secondary-button folder-tree-toggle" onClick={toggleFolderTree} disabled={folderTreeLoading}>
             {folderTreeLoading ? <><LoaderCircle className="spin" size={16} /> Loading folders…</> : <><FolderTree size={16} /> {folderTreeOpen ? "Hide available folders" : "Show available folders"}</>}
           </button>
@@ -1000,7 +1015,7 @@ export default function App() {
               setSearchText(event.target.value);
               setReaderMessage(null);
             }} onKeyDown={event => { if (event.key === "Enter" && !busy) checkFolder(); }} placeholder="Enter text to find in log contents or file names" /></ClearableField>
-            <button type="button" className="primary-button" onClick={checkFolder} disabled={busy}>{busy ? <><LoaderCircle className="spin" size={17} /> Searching…</> : <><Search size={17} /> Search</>}</button>
+            <button type="button" className="primary-button" onClick={() => checkFolder()} disabled={busy}>{busy ? <><LoaderCircle className="spin" size={17} /> Searching…</> : <><Search size={17} /> Search</>}</button>
           </div>
           <p className="hint">Search text is optional for all folders. Blank searches show all matching files; Todos shows files dated today. Worklogs can be filtered by date and subfolder; leaving the date blank searches across all years.</p>
           <div className="search-path">
@@ -1024,17 +1039,17 @@ export default function App() {
 
         {searchCategory === "todos" && (
           <div className="todo-retention">
-              <span>Files: <code>data/todos/*{getDateParts(todayInIndia()).dateHeading}-todo-task.txt</code></span>
+              <span>Folder: <code>data/todos/</code></span>
               <span>Deletes dated todo files more than 7 days old; other files are left untouched.</span>
           </div>
         )}
 
         {readerMessage && <div className={`notice ${readerMessage.type}`} role={readerMessage.type === "error" ? "alert" : "status"}>{readerMessage.type === "success" ? <CheckCircle2 size={18} /> : <AlertCircle size={18} />}<div>{readerMessage.text}</div></div>}
         <div className="reader-result">
-          {readerResults.length > 1 && <div className="reader-result-select">
-            <label htmlFor="reader-result-file">Matching files</label>
+          {(readerResults.length > 1 || (searchCategory === "todos" && readerResults.length === 1)) && <div className="reader-result-select">
+            <label htmlFor="reader-result-file">{searchCategory === "todos" ? "Todo files" : "Matching .txt files"}</label>
             <select id="reader-result-file" value={readerFile} onChange={event => selectReaderResult(event.target.value)}>
-              {readerResults.map(result => <option value={result.path} key={result.path}>{result.path}</option>)}
+              {readerResults.map(result => <option value={result.path} key={result.path}>{searchCategory === "todos" ? result.path.split("/").pop() : result.path}</option>)}
             </select>
           </div>}
           <div className="reader-result-actions"><button type="button" className="secondary-button" onClick={copySearchResult} disabled={!readerContent}><Copy size={16} /> Copy preview</button><button type="button" className="secondary-button" onClick={clearSearchResult} disabled={!readerFile && !readerContent && !readerResults.length && !readerMessage}><Eraser size={16} /> Clear results</button></div>

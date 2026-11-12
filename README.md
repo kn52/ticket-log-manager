@@ -6,7 +6,7 @@ A React + Vite app that updates a monthly plain-text log in GitHub from Jira tic
 
 - Shared repository settings with an Add log tab and a Search folders tab for Worklogs, Business files, and today's Todos.
 - Enter the GitHub repository as `owner/repository` (for example, `kn52/ticket-log-manager`); a leading or trailing slash is optional, and full GitHub URLs are also accepted.
-- In Search folders, enter `worklogs`, `business`, or `todos` (or `data/` followed by the folder name), optionally enter text or a file name, and select **Search**. Searches match file names and log contents, and matching files appear as separate previews. Worklogs can be filtered by an optional date and subfolder; leaving the date blank searches across all years. Blank Todos searches show all matching files dated today.
+- In Search folders, enter a folder path manually or click a folder in the tree to fill the input, then select **Search** to load it. Optionally enter text or a file name; blank searches list all matching `.txt` files. When multiple files match, select one from the dropdown to preview it. Worklogs can be filtered by an optional date and subfolder; leaving the date blank searches across all years. Blank Todos searches show all matching files dated today.
 - The Todos log type saves plain-text task entries under `data/todos/` as `[optional-name-or-ID__]DD-MMM-YYYY-todo-task.txt` (for example, `12-Nov-2026-todo-task.txt` or `ABC__12-Nov-2026-todo-task.txt`).
 - Searching the `todos` folder shows matching files dated today and deletes only dated todo files more than 7 days old. Undated files and the Business and Worklogs folders are not affected.
 - Reads the selected file from GitHub, or creates it and any missing parent folders if it does not exist.
